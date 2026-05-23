@@ -201,3 +201,147 @@ try:
                        type="primary")
 except Exception as e:
     st.error(f"Lỗi: {e}")
+
+
+# ============================================================
+# 🆚 SO SÁNH DỰ ÁN SIDE-BY-SIDE
+# ============================================================
+st.divider()
+st.markdown("### 🆚 So sánh dự án")
+st.caption("Chọn các dự án để so sánh KPI side-by-side · tìm dự án nào tốt/chậm/cần đẩy")
+
+from streamlit_qc.services import dashboard_service, project_service
+all_projects = project_service.list_projects(db)
+if len(all_projects) < 2:
+    st.info("Cần ≥ 2 dự án để so sánh. Hiện tại chỉ có 1 dự án.")
+else:
+    proj_options = {f"[{p['code']}] {p['name']}": p["id"] for p in all_projects}
+    selected_labels = st.multiselect(
+        "Chọn dự án so sánh (≥ 2)",
+        list(proj_options.keys()),
+        default=list(proj_options.keys())[:min(4, len(proj_options))],
+        help="Chọn 2-5 dự án để so sánh trực quan.",
+    )
+    selected_pids = [proj_options[lbl] for lbl in selected_labels]
+
+    if len(selected_pids) >= 2:
+        with st.spinner("Đang so sánh..."):
+            compare_data = dashboard_service.compare_projects(db, selected_pids)
+
+        if compare_data:
+            # Bảng so sánh
+            import pandas as _pd
+            df_cmp = _pd.DataFrame(compare_data)
+            df_cmp["pct_str"] = df_cmp["pct"].astype(str) + "%"
+            df_cmp_show = df_cmp.rename(columns={
+                "code": "Mã dự án",
+                "name": "Tên dự án",
+                "total": "Tổng CK",
+                "accepted": "Đã NT",
+                "backlog": "Tồn đọng",
+                "failed": "FAIL",
+                "overdue": "Overdue (>7d)",
+                "inspections_7d": "Insp 7 ngày",
+                "pct": "% Hoàn thành",
+            })[["Mã dự án", "Tên dự án", "Tổng CK", "Đã NT", "Tồn đọng",
+                "FAIL", "Overdue (>7d)", "Insp 7 ngày", "% Hoàn thành"]]
+            st.dataframe(
+                df_cmp_show, use_container_width=True, hide_index=True,
+                column_config={
+                    "Tổng CK": st.column_config.NumberColumn(format="%d"),
+                    "Đã NT": st.column_config.NumberColumn(format="%d"),
+                    "Tồn đọng": st.column_config.NumberColumn(format="%d"),
+                    "FAIL": st.column_config.NumberColumn(format="%d"),
+                    "Overdue (>7d)": st.column_config.NumberColumn(format="%d"),
+                    "Insp 7 ngày": st.column_config.NumberColumn(format="%d"),
+                    "% Hoàn thành": st.column_config.ProgressColumn(
+                        "% Hoàn thành", format="%.1f%%",
+                        min_value=0.0, max_value=100.0,
+                    ),
+                },
+            )
+
+            # Grouped bar chart
+            st.markdown("##### 📊 So sánh trực quan")
+            import plotly.graph_objects as _go
+            codes = [c["code"] for c in compare_data]
+
+            fig_cmp = _go.Figure()
+            fig_cmp.add_trace(_go.Bar(
+                x=codes, y=[c["pending"] for c in compare_data],
+                name="Chưa KT", marker_color="#94A3B8",
+            ))
+            fig_cmp.add_trace(_go.Bar(
+                x=codes, y=[c["in_progress"] for c in compare_data],
+                name="Đã Fit-up", marker_color="#D97706",
+            ))
+            fig_cmp.add_trace(_go.Bar(
+                x=codes, y=[c["accepted"] for c in compare_data],
+                name="Đã NT", marker_color="#0F766E",
+            ))
+            if any(c["failed"] for c in compare_data):
+                fig_cmp.add_trace(_go.Bar(
+                    x=codes, y=[c["failed"] for c in compare_data],
+                    name="FAIL", marker_color="#DC2626",
+                ))
+            fig_cmp.update_layout(
+                barmode="stack",
+                height=380,
+                margin=dict(l=10, r=10, t=40, b=10),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                yaxis=dict(gridcolor="#f1f5f9", title="Số cấu kiện"),
+                xaxis=dict(title=None, tickfont=dict(size=13, color="#0F1E40")),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                bargap=0.25,
+            )
+            st.plotly_chart(fig_cmp, use_container_width=True)
+
+            # Chart % hoàn thành riêng
+            st.markdown("##### 🎯 % Hoàn thành")
+            fig_pct = _go.Figure()
+            colors_pct = []
+            for p in compare_data:
+                pct_v = p["pct"]
+                if pct_v < 30:   c = "#DC2626"
+                elif pct_v < 50: c = "#EA580C"
+                elif pct_v < 70: c = "#F59E0B"
+                elif pct_v < 85: c = "#16A34A"
+                else:            c = "#0F766E"
+                colors_pct.append(c)
+            fig_pct.add_trace(_go.Bar(
+                x=codes,
+                y=[c["pct"] for c in compare_data],
+                marker_color=colors_pct,
+                text=[f"<b>{c['pct']}%</b>" for c in compare_data],
+                textposition="outside",
+                textfont=dict(size=13, color="#0F172A"),
+            ))
+            fig_pct.update_layout(
+                height=300, showlegend=False,
+                margin=dict(l=10, r=10, t=20, b=10),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                yaxis=dict(range=[0, 110], gridcolor="#f1f5f9", title="% Hoàn thành"),
+                xaxis=dict(title=None, tickfont=dict(size=13, color="#0F1E40")),
+                bargap=0.4,
+            )
+            st.plotly_chart(fig_pct, use_container_width=True)
+
+            # Highlight insights
+            best = max(compare_data, key=lambda x: x["pct"])
+            worst = min(compare_data, key=lambda x: x["pct"])
+            most_active = max(compare_data, key=lambda x: x["inspections_7d"])
+            most_overdue = max(compare_data, key=lambda x: x["overdue"])
+
+            ic1, ic2, ic3, ic4 = st.columns(4)
+            with ic1:
+                st.metric("🏆 Tốt nhất", f"{best['code']}", f"{best['pct']}%")
+            with ic2:
+                st.metric("📉 Chậm nhất", f"{worst['code']}", f"{worst['pct']}%", delta_color="inverse")
+            with ic3:
+                st.metric("⚡ Năng suất tuần", f"{most_active['code']}",
+                          f"{most_active['inspections_7d']:,} insp")
+            with ic4:
+                st.metric("⚠ Nhiều overdue", f"{most_overdue['code']}",
+                          f"{most_overdue['overdue']} CK", delta_color="inverse")
+    elif len(selected_pids) == 1:
+        st.info("Chọn thêm dự án để so sánh (≥ 2).")

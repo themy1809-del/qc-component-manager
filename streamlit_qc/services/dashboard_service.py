@@ -227,3 +227,94 @@ def get_inspector_performance(
         args,
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def compare_projects(db: DB, project_ids: list[int]) -> list[dict]:
+    """
+    So sánh nhiều dự án side-by-side.
+
+    Returns: list dict {pid, code, name, total, accepted, passed, pending,
+                       in_progress, failed, pct, overdue, n_inspections_7d}
+    """
+    if not project_ids:
+        return []
+
+    placeholders = ",".join("?" * len(project_ids))
+
+    # 1. Project info
+    proj_rows = db.conn.execute(
+        f"SELECT id, code, name, location, owner FROM projects WHERE id IN ({placeholders})",
+        project_ids,
+    ).fetchall()
+    proj_map = {r["id"]: dict(r) for r in proj_rows}
+
+    # 2. Status counts per project
+    status_rows = db.conn.execute(
+        f"""SELECT project_id, status, COUNT(*) c
+           FROM components WHERE project_id IN ({placeholders})
+           GROUP BY project_id, status""",
+        project_ids,
+    ).fetchall()
+    counts_map: dict[int, dict] = {}
+    for r in status_rows:
+        pid = r["project_id"]
+        if pid not in counts_map:
+            counts_map[pid] = {
+                "total": 0, "PENDING": 0, "IN_PROGRESS": 0,
+                "PASSED": 0, "FAILED": 0, "ACCEPTED": 0,
+            }
+        counts_map[pid][r["status"]] = r["c"]
+        counts_map[pid]["total"] += r["c"]
+
+    # 3. Inspections 7 ngày qua per project
+    if db.is_postgres:
+        cutoff = "(CURRENT_DATE - INTERVAL '7 days')::date"
+        date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at::text))"
+    else:
+        cutoff = "date('now', '-7 days')"
+        date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at))"
+    ins_rows = db.conn.execute(
+        f"""SELECT project_id, COUNT(*) c
+           FROM inspections
+           WHERE project_id IN ({placeholders})
+                 AND {date_expr} >= {cutoff}
+           GROUP BY project_id""",
+        project_ids,
+    ).fetchall()
+    ins_7d_map = {r["project_id"]: r["c"] for r in ins_rows}
+
+    # 4. Overdue per project (threshold 7 days)
+    from streamlit_qc.services.component_service import get_overdue_components
+    overdue_map = {}
+    for pid in project_ids:
+        try:
+            overdue_map[pid] = len(get_overdue_components(db, pid, 7))
+        except Exception:
+            overdue_map[pid] = 0
+
+    # Compose result
+    out = []
+    for pid in project_ids:
+        if pid not in proj_map:
+            continue
+        c = counts_map.get(pid, {})
+        total = c.get("total", 0)
+        accepted = c.get("ACCEPTED", 0)
+        passed = c.get("PASSED", 0)
+        done = accepted + passed
+        out.append({
+            "pid": pid,
+            "code": proj_map[pid]["code"],
+            "name": proj_map[pid]["name"],
+            "total": total,
+            "accepted": accepted,
+            "passed": passed,
+            "pending": c.get("PENDING", 0),
+            "in_progress": c.get("IN_PROGRESS", 0),
+            "failed": c.get("FAILED", 0),
+            "backlog": c.get("PENDING", 0) + c.get("IN_PROGRESS", 0),
+            "pct": round(done * 100 / total, 1) if total else 0.0,
+            "overdue": overdue_map.get(pid, 0),
+            "inspections_7d": ins_7d_map.get(pid, 0),
+        })
+    return out
