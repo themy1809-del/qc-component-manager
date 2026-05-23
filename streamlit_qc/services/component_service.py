@@ -457,3 +457,95 @@ def get_component_detail(db: DB, pid: int, code: str) -> dict | None:
         "data": json.loads(comp["data_json"]),
         "inspections": [dict(r) for r in db.list_inspections(comp["id"])],
     }
+
+
+# ====================================================================
+# GLOBAL SEARCH — tìm mã cấu kiện xuyên TẤT CẢ dự án
+# ====================================================================
+def global_search(db: DB, query: str, limit: int = 50) -> list[dict]:
+    """
+    Search xuyên tất cả projects bằng SQL LIKE.
+
+    Args:
+        db: DB instance
+        query: chuỗi tìm kiếm (vd "BTG", "01BTG3008", "VB67")
+        limit: số kết quả tối đa
+
+    Returns:
+        List dict {pid, project_code, project_name, cid, code, status,
+                   workshop, name, fitup_date, final_date}
+    """
+    q = (query or "").strip()
+    if len(q) < 2:
+        return []
+
+    if db.is_postgres:
+        ws_extract = "COALESCE(c.data_json::jsonb->>'workshop', '')"
+        name_extract = (
+            "COALESCE(c.data_json::jsonb->>'manual_drawing', "
+            "c.data_json::jsonb->>'drawing', "
+            "c.data_json::jsonb->>'member_no', '')"
+        )
+    else:
+        ws_extract = "COALESCE(json_extract(c.data_json, '$.workshop'), '')"
+        name_extract = (
+            "COALESCE(json_extract(c.data_json, '$.manual_drawing'), "
+            "json_extract(c.data_json, '$.drawing'), "
+            "json_extract(c.data_json, '$.member_no'), '')"
+        )
+
+    rows = db.conn.execute(
+        f"""
+        SELECT c.id cid, c.code, c.status, c.project_id pid,
+               p.code proj_code, p.name proj_name,
+               {ws_extract} AS workshop,
+               {name_extract} AS name
+        FROM components c
+        JOIN projects p ON p.id = c.project_id
+        WHERE c.code LIKE ?
+        ORDER BY c.code
+        LIMIT ?
+        """,
+        (f"%{q}%", limit),
+    ).fetchall()
+
+    # Lấy ngày Fit-up + Final mới nhất cho mỗi component
+    if not rows:
+        return []
+    cids = [r["cid"] for r in rows]
+    placeholders = ",".join("?" * len(cids))
+    ins_rows = db.conn.execute(
+        f"""
+        SELECT component_id, inspection_type, MAX(inspection_date) last_date
+        FROM inspections
+        WHERE component_id IN ({placeholders})
+              AND inspection_type IN ('FUR','DGRP')
+              AND result = 'PASS'
+        GROUP BY component_id, inspection_type
+        """,
+        cids,
+    ).fetchall()
+    dates_map: dict[int, dict[str, str]] = {}
+    for r in ins_rows:
+        cid = r["component_id"]
+        if cid not in dates_map:
+            dates_map[cid] = {}
+        dates_map[cid][r["inspection_type"]] = r["last_date"] or ""
+
+    out = []
+    for r in rows:
+        cid = r["cid"]
+        dates = dates_map.get(cid, {})
+        out.append({
+            "pid": r["pid"],
+            "project_code": r["proj_code"],
+            "project_name": r["proj_name"],
+            "cid": cid,
+            "code": r["code"],
+            "status": r["status"],
+            "workshop": r["workshop"] or "—",
+            "name": r["name"] or "—",
+            "fitup_date": format_date_vn(dates.get("FUR", "")),
+            "final_date": format_date_vn(dates.get("DGRP", "")),
+        })
+    return out

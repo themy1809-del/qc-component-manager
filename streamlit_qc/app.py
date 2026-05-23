@@ -314,6 +314,95 @@ def pct_color(p: float) -> str:
 
 
 # ============================================================
+# 0a. GLOBAL SEARCH — tìm cấu kiện xuyên mọi dự án
+# ============================================================
+from streamlit_qc.services import component_service as _cs
+
+emit('<div class="sec">🔎 Tìm kiếm toàn cục <span class="sub">· gõ mã cấu kiện ≥ 2 ký tự để tìm xuyên dự án</span></div>')
+
+sc1, sc2 = st.columns([5, 1])
+with sc1:
+    search_query = st.text_input(
+        "search_input",
+        placeholder="vd: BTG3008, 01USC, VB67, 02BLP1001-001...",
+        label_visibility="collapsed",
+        key="global_search_input",
+    )
+with sc2:
+    st.write("")
+    clear_btn = st.button("🧹 Xoá", use_container_width=True)
+    if clear_btn:
+        st.session_state["global_search_input"] = ""
+        st.rerun()
+
+if search_query and len(search_query.strip()) >= 2:
+    with st.spinner("Đang tìm..."):
+        results = _cs.global_search(db, search_query.strip(), limit=30)
+
+    if not results:
+        st.info(f"Không tìm thấy cấu kiện nào khớp **'{search_query}'**.")
+    else:
+        emit(f'<div style="margin:4px 0 8px 0;color:#0F1E40;font-weight:600;">Tìm thấy {len(results)} kết quả:</div>')
+
+        # Status badge mapping
+        STATUS_BADGE = {
+            "ACCEPTED": ("✅ Đã NT", "#0F766E"),
+            "PASSED": ("🏆 Đạt", "#16A34A"),
+            "IN_PROGRESS": ("🔧 Đã Fit-up", "#D97706"),
+            "FAILED": ("⚠️ Không đạt", "#DC2626"),
+            "PENDING": ("⏳ Chưa KT", "#94A3B8"),
+        }
+
+        # Render kết quả dạng card list
+        rows_html = ""
+        for r in results:
+            label, color = STATUS_BADGE.get(r["status"], (r["status"], "#64748B"))
+            rows_html += (
+                f'<div style="background:#fff;border:1px solid #e2e8f0;border-radius:8px;'
+                f'padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:12px;">'
+                f'<div style="background:#0F1E40;color:#FCE7A1;padding:3px 8px;border-radius:5px;'
+                f'font-size:11px;font-weight:700;min-width:60px;text-align:center;">'
+                f'{r["project_code"]}'
+                f'</div>'
+                f'<div style="flex:1;min-width:0;">'
+                f'<div style="font-weight:700;color:#0F172A;font-size:13px;">{r["code"]}</div>'
+                f'<div style="color:#94A3B8;font-size:11px;">'
+                f'{r["name"][:50]} · 🏭 {r["workshop"]}'
+                f'</div>'
+                f'</div>'
+                f'<div style="text-align:center;font-size:11px;color:#64748B;">'
+                f'<div>Fit-up: <b style="color:#0F172A;">{r["fitup_date"] or "—"}</b></div>'
+                f'<div>Final: <b style="color:#0F172A;">{r["final_date"] or "—"}</b></div>'
+                f'</div>'
+                f'<span style="background:{color}18;color:{color};padding:4px 10px;'
+                f'border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap;">'
+                f'{label}</span>'
+                f'</div>'
+            )
+        emit(rows_html)
+
+        # Nút action: switch sang project đầu tiên trong kết quả
+        unique_pids = list(dict.fromkeys(r["pid"] for r in results))
+        if len(unique_pids) >= 1:
+            switch_cols = st.columns(min(len(unique_pids), 4))
+            for i, target_pid in enumerate(unique_pids[:4]):
+                pname = next(r["project_code"] for r in results if r["pid"] == target_pid)
+                with switch_cols[i]:
+                    if st.button(
+                        f"🔀 Sang dự án [{pname}] xem chi tiết",
+                        key=f"search_switch_{target_pid}",
+                        use_container_width=True,
+                    ):
+                        from streamlit_qc.core.state import set_current_project_id
+                        set_current_project_id(target_pid)
+                        st.session_state.pop("selected_workshop", None)
+                        # Preset search filter ở page Cấu kiện
+                        st.session_state["preset_search_query"] = search_query
+                        st.switch_page("pages/4_🔧_Cấu_kiện.py")
+
+    st.divider()
+
+# ============================================================
 # 0. TỔNG QUAN ĐA DỰ ÁN — hiện trước hero (nếu > 1 dự án)
 # ============================================================
 all_projects_data = all_projects_summary(db)
@@ -639,7 +728,8 @@ for i, (icon, title, page) in enumerate(actions):
         if st.button("Mở", key=f"nav_{i}", use_container_width=True):
             st.switch_page(page)
 
+from streamlit_qc.core.constants import APP_VERSION as _AV, COMPANY as _CO
 emit(
     f'<div style="text-align:center;color:#94A3B8;font-size:11px;padding-top:18px;margin-top:18px;'
-    f'border-top:1px solid #E2E8F0;">QC Component Manager v{APP_VERSION} · © 2026 {COMPANY}</div>'
+    f'border-top:1px solid #E2E8F0;">QC Component Manager v{_AV} · © 2026 {_CO}</div>'
 )

@@ -68,7 +68,13 @@ with flt_col1:
         format_func=lambda s: "Tất cả" if s == "ALL" else STATUS_LABELS.get(s, s),
     )
 with flt_col2:
-    search = st.text_input("🔎 Tìm mã cấu kiện", placeholder="vd: 01BTG hoặc TB001")
+    # Pre-set search query nếu user click từ Global Search ở Trang chủ
+    _preset_search = st.session_state.pop("preset_search_query", None)
+    search = st.text_input(
+        "🔎 Tìm mã cấu kiện",
+        value=_preset_search or "",
+        placeholder="vd: 01BTG hoặc TB001",
+    )
 with flt_col3:
     st.write("")
     st.write("")
@@ -243,9 +249,56 @@ if save_btn and changes:
     st.rerun()
 
 st.divider()
-exp_col1, _ = st.columns([2, 6])
+exp_col1, exp_col2, exp_col3, _ = st.columns([2, 2, 3, 3])
+with exp_col1:
+    csv_data = edited.drop(columns=["id"]).to_csv(index=False).encode("utf-8-sig")
+exp_col1, exp_col2, exp_col3, _ = st.columns([2, 2, 3, 3])
 with exp_col1:
     csv_data = edited.drop(columns=["id"]).to_csv(index=False).encode("utf-8-sig")
     st.download_button("📥 Tải CSV", csv_data,
                        file_name=f"cau_kien_{proj['code']}.csv",
                        mime="text/csv", use_container_width=True)
+
+with exp_col2:
+    accepted_ids = [r.id for r in data.rows if r.status == "ACCEPTED"]
+    n_accepted = len(accepted_ids)
+    gen_pdf = st.button(
+        f"📄 PDF biên bản ({n_accepted} ACCEPTED)",
+        use_container_width=True,
+        disabled=(n_accepted == 0),
+        help="Xuất PDF biên bản nghiệm thu cho TẤT CẢ cấu kiện ACCEPTED đang hiển thị.",
+    )
+
+with exp_col3:
+    pdf_limit = st.number_input(
+        "Giới hạn số cấu kiện / PDF", min_value=1, max_value=200, value=50,
+        help="PDF nhiều cấu kiện sẽ load chậm. Mặc định 50.",
+    )
+
+if gen_pdf and accepted_ids:
+    try:
+        from streamlit_qc.services import pdf_service
+        ids_to_export = accepted_ids[:int(pdf_limit)]
+        with st.spinner(f"Đang tạo PDF cho {len(ids_to_export)} cấu kiện..."):
+            pdf_bytes = pdf_service.generate_certificate(
+                db, pid=pid, component_ids=ids_to_export,
+                inspector_signoff=st.session_state.get(S_CURRENT_USER, ""),
+                customer_signoff="",
+            )
+        st.success(f"✅ Đã tạo PDF với {len(ids_to_export)} cấu kiện.")
+        from datetime import datetime as _dt
+        st.download_button(
+            "💾 Tải PDF",
+            pdf_bytes,
+            file_name=f"BBNT_{proj['code']}_{_dt.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            type="primary",
+            use_container_width=True,
+        )
+    except ImportError:
+        st.error("Chưa cài reportlab. Push DEPLOY.bat để Cloud rebuild với reportlab.")
+    except Exception as e:
+        st.error(f"Lỗi tạo PDF: {e}")
+        import traceback
+        with st.expander("Chi tiết lỗi"):
+            st.code(traceback.format_exc())
