@@ -58,20 +58,75 @@ def get_db() -> DB:
 # SESSION STATE KEYS
 # ====================================================================
 S_CURRENT_USER = "current_user"
+S_CURRENT_USER_OBJ = "current_user_obj"  # full user dict
 S_CURRENT_PROJECT_ID = "current_project_id"
 
 
 def init_session_state() -> None:
+    # Tạo admin mặc định nếu DB chưa có user nào
+    try:
+        from streamlit_qc.services.auth_service import ensure_default_admin
+        ensure_default_admin(get_db())
+    except Exception:
+        pass
+
     if S_CURRENT_USER not in st.session_state:
-        st.session_state[S_CURRENT_USER] = (
-            os.getenv("USERNAME") or os.getenv("USER") or "qc_user"
-        )
+        st.session_state[S_CURRENT_USER] = "anonymous"
+    if S_CURRENT_USER_OBJ not in st.session_state:
+        st.session_state[S_CURRENT_USER_OBJ] = None
     if S_CURRENT_PROJECT_ID not in st.session_state:
         st.session_state[S_CURRENT_PROJECT_ID] = None
 
 
+def is_logged_in() -> bool:
+    """True nếu user đã login."""
+    return st.session_state.get(S_CURRENT_USER_OBJ) is not None
+
+
+def get_current_user_obj() -> dict | None:
+    """Return full user dict {id, username, full_name, role}."""
+    return st.session_state.get(S_CURRENT_USER_OBJ)
+
+
+def is_admin() -> bool:
+    u = get_current_user_obj()
+    return bool(u and u.get("role") == "admin")
+
+
+def login_user(user: dict) -> None:
+    """Set session state after successful login."""
+    st.session_state[S_CURRENT_USER] = user["username"]
+    st.session_state[S_CURRENT_USER_OBJ] = user
+
+
+def logout_user() -> None:
+    """Clear session."""
+    st.session_state[S_CURRENT_USER] = "anonymous"
+    st.session_state[S_CURRENT_USER_OBJ] = None
+    st.session_state[S_CURRENT_PROJECT_ID] = None
+
+
+def require_login() -> None:
+    """
+    Hiện tại: NO-OP (demo phase, không bắt login).
+    Chỉ ghi access log để thống kê truy cập.
+    Khi nào bật login lại → bỏ comment đoạn dưới.
+    """
+    # Track access (lightweight, fail-safe)
+    try:
+        from streamlit_qc.services.access_tracker import track_visit
+        track_visit(get_db())
+    except Exception:
+        pass
+
+    # # === DEMO PHASE: bỏ qua login ===
+    # if is_logged_in():
+    #     return
+    # ... (login form ở đây)
+
+
 def get_current_user() -> str:
-    return st.session_state.get(S_CURRENT_USER, "qc_user")
+    return st.session_state.get(S_CURRENT_USER, "anonymous")
 
 
 def get_current_project_id() -> int | None:

@@ -35,6 +35,11 @@ st.set_page_config(
 apply_theme()
 init_session_state()
 db = get_db()
+
+from streamlit_qc.services.access_tracker import set_current_page as _scp
+_scp("quantri")
+from streamlit_qc.core.state import require_login
+require_login()
 render_top_nav(active_page="quantri")
 
 user = st.session_state[S_CURRENT_USER]
@@ -192,3 +197,94 @@ with tab_backup:
                     pass
             else:
                 st.error(result.get("error", "Unknown"))
+
+
+# ============================================================
+# 📊 THỐNG KÊ TRUY CẬP — visitor tracking
+# ============================================================
+st.divider()
+st.markdown("### 📊 Thống kê truy cập")
+st.caption("Theo dõi các session truy cập app (anonymous tracking — không bắt login)")
+
+from streamlit_qc.services import access_tracker
+
+stats = access_tracker.get_stats_summary(db)
+ms1, ms2, ms3, ms4 = st.columns(4)
+ms1.metric("Hôm nay", f"{stats['sessions_today']}", help="Session duy nhất hôm nay")
+ms2.metric("7 ngày qua", f"{stats['sessions_7d']}", help="Session duy nhất 7 ngày")
+ms3.metric("Tất cả", f"{stats['total_sessions']:,}", help="Tổng session toàn thời gian")
+ms4.metric("Tổng pageviews", f"{stats['total_page_views']:,}", help="Tổng số lần xem page")
+
+# Chart daily visits 14 ngày
+daily = access_tracker.get_daily_visits(db, days=14)
+if daily:
+    import plotly.graph_objects as _go
+    import datetime as _dt
+    date_labels = []
+    for r in daily:
+        try:
+            date_labels.append(_dt.date.fromisoformat(r["date"]).strftime("%d/%m"))
+        except Exception:
+            date_labels.append(r["date"])
+
+    fig_visits = _go.Figure()
+    fig_visits.add_trace(_go.Bar(
+        x=date_labels, y=[r["sessions"] for r in daily],
+        name="Session", marker_color="#0F766E",
+        text=[r["sessions"] for r in daily], textposition="outside",
+    ))
+    fig_visits.add_trace(_go.Scatter(
+        x=date_labels, y=[r["page_views"] for r in daily],
+        name="Pageview", mode="lines+markers",
+        line=dict(color="#D97706", width=2), yaxis="y2",
+    ))
+    fig_visits.update_layout(
+        height=280, margin=dict(l=10, r=10, t=30, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        yaxis=dict(title="Session", gridcolor="#f1f5f9"),
+        yaxis2=dict(title="Pageview", overlaying="y", side="right"),
+        xaxis=dict(showgrid=False),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1),
+        bargap=0.3,
+    )
+    st.plotly_chart(fig_visits, use_container_width=True)
+
+# 2 cột: Top pages + Recent visitors
+vc1, vc2 = st.columns([1, 2])
+with vc1:
+    st.markdown("##### 🔥 Top page (7 ngày)")
+    top_pages = access_tracker.get_top_pages(db, days=7, limit=10)
+    if top_pages:
+        page_labels = {
+            "home": "🏠 Trang chủ",
+            "tongquan": "📊 Tổng quan",
+            "master": "📥 Import Master",
+            "daily": "📤 Import Daily",
+            "caukien": "🔧 Cấu kiện",
+            "baocao": "📈 Báo cáo",
+            "quantri": "⚙️ Quản trị",
+        }
+        df_top = pd.DataFrame([{
+            "Page": page_labels.get(p["page"], p["page"]),
+            "Views": p["views"],
+        } for p in top_pages])
+        st.dataframe(df_top, hide_index=True, use_container_width=True,
+                     column_config={"Views": st.column_config.NumberColumn(format="%d")})
+    else:
+        st.caption("_Chưa có data._")
+
+with vc2:
+    st.markdown("##### 🕒 Recent visitors (50 session mới nhất)")
+    recent = access_tracker.get_recent_visitors(db, limit=50)
+    if recent:
+        df_rec = pd.DataFrame([{
+            "Session": r["session_id"],
+            "Lần cuối": r["last_seen"],
+            "Pageviews": r["page_views"],
+            "IP": r["ip"],
+            "Trình duyệt": r["ua"][:50] + ("..." if len(r["ua"]) > 50 else ""),
+        } for r in recent])
+        st.dataframe(df_rec, hide_index=True, use_container_width=True, height=400,
+                     column_config={"Pageviews": st.column_config.NumberColumn(format="%d")})
+    else:
+        st.caption("_Chưa có visitor nào._")

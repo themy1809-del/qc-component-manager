@@ -45,6 +45,11 @@ st.set_page_config(
 apply_theme()
 init_session_state()
 db = get_db()
+
+from streamlit_qc.services.access_tracker import set_current_page as _scp
+_scp("daily")
+from streamlit_qc.core.state import require_login
+require_login()
 render_top_nav(active_page="daily")
 
 INSPECTION_OPTIONS = [

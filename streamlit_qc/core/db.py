@@ -228,6 +228,26 @@ class DB:
                 ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT,
+                role TEXT DEFAULT 'qc_worker',
+                active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS access_log (
+                id SERIAL PRIMARY KEY,
+                session_id TEXT,
+                ip_address TEXT,
+                user_agent TEXT,
+                page_name TEXT,
+                ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_components_code
                 ON components(project_id, code);
             CREATE INDEX IF NOT EXISTS idx_inspections_comp
@@ -238,6 +258,10 @@ class DB:
                 ON audit_log(ts DESC);
             CREATE INDEX IF NOT EXISTS idx_comments_comp
                 ON comments(component_id, ts DESC);
+            CREATE INDEX IF NOT EXISTS idx_access_session
+                ON access_log(session_id);
+            CREATE INDEX IF NOT EXISTS idx_access_ts
+                ON access_log(ts DESC);
             """
         else:
             schema = """
@@ -307,6 +331,26 @@ class DB:
                 text TEXT NOT NULL,
                 ts TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                full_name TEXT,
+                role TEXT DEFAULT 'qc_worker',
+                active INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                last_login TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS access_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                ip_address TEXT,
+                user_agent TEXT,
+                page_name TEXT,
+                ts TEXT DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE INDEX IF NOT EXISTS idx_components_code
