@@ -320,19 +320,25 @@ from streamlit_qc.services import component_service as _cs
 
 emit('<div class="sec">🔎 Tìm kiếm toàn cục <span class="sub">· gõ mã cấu kiện ≥ 2 ký tự để tìm xuyên dự án</span></div>')
 
+# Trick để clear text_input: dùng counter trong key
+# Khi user bấm Xoá → counter +1 → text_input có key mới → reset value
+if "search_key_counter" not in st.session_state:
+    st.session_state["search_key_counter"] = 0
+search_widget_key = f"global_search_input_{st.session_state['search_key_counter']}"
+
 sc1, sc2 = st.columns([5, 1])
 with sc1:
     search_query = st.text_input(
         "search_input",
         placeholder="vd: BTG3008, 01USC, VB67, 02BLP1001-001...",
         label_visibility="collapsed",
-        key="global_search_input",
+        key=search_widget_key,
     )
 with sc2:
     st.write("")
-    clear_btn = st.button("🧹 Xoá", use_container_width=True)
-    if clear_btn:
-        st.session_state["global_search_input"] = ""
+    if st.button("🧹 Xoá", use_container_width=True):
+        # Bump counter → text_input có key mới → tự reset
+        st.session_state["search_key_counter"] += 1
         st.rerun()
 
 if search_query and len(search_query.strip()) >= 2:

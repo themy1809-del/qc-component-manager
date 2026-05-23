@@ -143,3 +143,87 @@ def compute_dashboard(
     ]
 
     return data
+
+
+# ====================================================================
+# TREND ANALYSIS — số inspection mỗi ngày
+# ====================================================================
+def get_inspection_trend(
+    db: DB,
+    pid: int | None = None,
+    days: int = 30,
+) -> list[dict]:
+    """
+    Trả về list dict {date, type, count} cho N ngày qua.
+
+    Args:
+        db: DB instance
+        pid: nếu None → toàn công ty, nếu int → chỉ 1 dự án
+        days: số ngày (7, 30, 90)
+
+    Returns:
+        List {date (ISO), type, count} sort theo date asc
+    """
+    if db.is_postgres:
+        date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at::text))"
+        cutoff_expr = f"(CURRENT_DATE - INTERVAL '{days} days')::date"
+    else:
+        date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at))"
+        cutoff_expr = f"date('now', '-{days} days')"
+
+    where_pid = "WHERE project_id = ?" if pid else "WHERE 1=1"
+    args = [pid] if pid else []
+
+    rows = db.conn.execute(
+        f"""
+        SELECT {date_expr} AS d, inspection_type AS t, COUNT(*) AS c
+        FROM inspections
+        {where_pid}
+              AND {date_expr} IS NOT NULL
+              AND {date_expr} >= {cutoff_expr}
+        GROUP BY d, t
+        ORDER BY d ASC
+        """,
+        args,
+    ).fetchall()
+    return [{"date": str(r["d"]), "type": r["t"], "count": r["c"]} for r in rows]
+
+
+def get_inspector_performance(
+    db: DB,
+    pid: int | None = None,
+    days: int = 30,
+) -> list[dict]:
+    """
+    Trả về list dict {inspector, total, pass, fail, recheck} cho N ngày qua.
+
+    Top 20 inspector theo số lượng cao nhất.
+    """
+    if db.is_postgres:
+        date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at::text))"
+        cutoff_expr = f"(CURRENT_DATE - INTERVAL '{days} days')::date"
+    else:
+        date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at))"
+        cutoff_expr = f"date('now', '-{days} days')"
+
+    where_pid = "AND project_id = ?" if pid else ""
+    args = [pid] if pid else []
+
+    rows = db.conn.execute(
+        f"""
+        SELECT COALESCE(NULLIF(inspector, ''), '(không tên)') AS inspector,
+               COUNT(*) AS total,
+               SUM(CASE WHEN result = 'PASS' THEN 1 ELSE 0 END) AS n_pass,
+               SUM(CASE WHEN result = 'FAIL' THEN 1 ELSE 0 END) AS n_fail,
+               SUM(CASE WHEN result = 'RECHECK' THEN 1 ELSE 0 END) AS n_recheck
+        FROM inspections
+        WHERE {date_expr} IS NOT NULL
+              AND {date_expr} >= {cutoff_expr}
+              {where_pid}
+        GROUP BY inspector
+        ORDER BY total DESC
+        LIMIT 20
+        """,
+        args,
+    ).fetchall()
+    return [dict(r) for r in rows]

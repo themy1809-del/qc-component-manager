@@ -425,3 +425,156 @@ if data.recent_inspections:
     st.dataframe(recent_df, use_container_width=True, hide_index=True, height=380)
 else:
     st.info("Chưa có inspection nào. Vào **Import Daily** để nạp file kiểm tra.")
+
+
+# ============================================================
+# 📈 TREND CHART — năng suất inspection theo thời gian
+# ============================================================
+st.write("")
+st.markdown('<div class="section-title">📈 Năng suất inspection theo thời gian</div>', unsafe_allow_html=True)
+
+tcol1, tcol2 = st.columns([3, 1])
+with tcol1:
+    trend_days = st.radio(
+        "Khoảng thời gian",
+        [7, 30, 90],
+        format_func=lambda d: f"{d} ngày qua",
+        horizontal=True,
+        index=1,
+        key="trend_days_radio",
+    )
+with tcol2:
+    trend_scope = st.radio(
+        "Phạm vi",
+        ["Dự án này", "Toàn công ty"],
+        horizontal=True,
+        key="trend_scope_radio",
+    )
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _trend_cached(_db, pid_in: int | None, days: int) -> list[dict]:
+    return dashboard_service.get_inspection_trend(_db, pid_in, days)
+
+trend_pid = pid if trend_scope == "Dự án này" else None
+trend_data = _trend_cached(db, trend_pid, trend_days)
+
+if trend_data:
+    import datetime as dt
+    # Build daily series
+    today = dt.date.today()
+    days_list = [(today - dt.timedelta(days=i)).isoformat() for i in range(trend_days - 1, -1, -1)]
+    series_fitup = {d: 0 for d in days_list}
+    series_final = {d: 0 for d in days_list}
+    series_other = {d: 0 for d in days_list}
+    for r in trend_data:
+        d = r["date"]
+        if d not in series_fitup:
+            continue
+        if r["type"] == "FUR":
+            series_fitup[d] += r["count"]
+        elif r["type"] == "DGRP":
+            series_final[d] += r["count"]
+        else:
+            series_other[d] += r["count"]
+
+    date_labels = [dt.date.fromisoformat(d).strftime("%d/%m") for d in days_list]
+    fit_vals = list(series_fitup.values())
+    fin_vals = list(series_final.values())
+    other_vals = list(series_other.values())
+    total_vals = [a + b + c for a, b, c in zip(fit_vals, fin_vals, other_vals)]
+
+    import plotly.graph_objects as _go
+    fig_trend = _go.Figure()
+    fig_trend.add_trace(_go.Bar(
+        x=date_labels, y=fit_vals, name="Fit-up",
+        marker_color="#F59E0B",
+        hovertemplate="<b>%{x}</b><br>Fit-up: %{y}<extra></extra>",
+    ))
+    fig_trend.add_trace(_go.Bar(
+        x=date_labels, y=fin_vals, name="Final / DGRP",
+        marker_color="#0F766E",
+        hovertemplate="<b>%{x}</b><br>Final: %{y}<extra></extra>",
+    ))
+    if sum(other_vals) > 0:
+        fig_trend.add_trace(_go.Bar(
+            x=date_labels, y=other_vals, name="Khác (NDT/DIR/VIR)",
+            marker_color="#94A3B8",
+            hovertemplate="<b>%{x}</b><br>Khác: %{y}<extra></extra>",
+        ))
+    # Line tổng
+    fig_trend.add_trace(_go.Scatter(
+        x=date_labels, y=total_vals,
+        mode="lines+markers+text", name="Tổng",
+        line=dict(color="#0F1E40", width=2.5),
+        marker=dict(size=7, color="#FCE7A1", line=dict(color="#0F1E40", width=2)),
+        text=total_vals,
+        textposition="top center",
+        textfont=dict(size=10, color="#0F1E40"),
+        hovertemplate="<b>%{x}</b><br>Tổng: %{y}<extra></extra>",
+    ))
+    fig_trend.update_layout(
+        barmode="stack",
+        height=380, margin=dict(l=10, r=10, t=40, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(showgrid=False, tickfont=dict(size=10, color="#475569")),
+        yaxis=dict(gridcolor="#f1f5f9", tickfont=dict(size=10, color="#94A3B8")),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=11)),
+        bargap=0.3,
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
+
+    # Stats tổng
+    total_week = sum(total_vals)
+    avg_day = total_week / trend_days if trend_days else 0
+    max_day = max(total_vals) if total_vals else 0
+    max_day_idx = total_vals.index(max_day) if max_day else 0
+    max_date = date_labels[max_day_idx] if max_day else "—"
+    sc1, sc2, sc3 = st.columns(3)
+    with sc1:
+        st.metric(f"Tổng {trend_days} ngày", f"{total_week:,}")
+    with sc2:
+        st.metric("Trung bình/ngày", f"{avg_day:.1f}")
+    with sc3:
+        st.metric(f"Ngày cao nhất ({max_date})", f"{max_day:,}")
+else:
+    st.info(f"Chưa có inspection nào trong {trend_days} ngày qua.")
+
+
+# ============================================================
+# 👤 INSPECTOR PERFORMANCE
+# ============================================================
+st.write("")
+st.markdown('<div class="section-title">👤 Hiệu suất Inspector</div>', unsafe_allow_html=True)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _inspector_perf_cached(_db, pid_in: int | None, days: int) -> list[dict]:
+    return dashboard_service.get_inspector_performance(_db, pid_in, days)
+
+insp_perf = _inspector_perf_cached(db, trend_pid, trend_days)
+
+if insp_perf:
+    perf_df = pd.DataFrame(insp_perf)
+    perf_df["fail_rate"] = (perf_df["n_fail"] * 100 / perf_df["total"]).round(1)
+    perf_df = perf_df.rename(columns={
+        "inspector": "Inspector",
+        "total": "Tổng",
+        "n_pass": "✅ Pass",
+        "n_fail": "❌ Fail",
+        "n_recheck": "🔁 Recheck",
+        "fail_rate": "% Fail",
+    })
+    st.dataframe(
+        perf_df, use_container_width=True, hide_index=True,
+        column_config={
+            "Tổng": st.column_config.NumberColumn(format="%d"),
+            "✅ Pass": st.column_config.NumberColumn(format="%d"),
+            "❌ Fail": st.column_config.NumberColumn(format="%d"),
+            "🔁 Recheck": st.column_config.NumberColumn(format="%d"),
+            "% Fail": st.column_config.ProgressColumn(
+                "% Fail", format="%.1f%%", min_value=0.0, max_value=50.0,
+            ),
+        },
+    )
+    st.caption(f"Top 20 inspector trong **{trend_days} ngày qua** · {'Dự án này' if trend_pid else 'Toàn công ty'}")
+else:
+    st.info(f"Chưa có inspection nào trong {trend_days} ngày qua.")
