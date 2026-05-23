@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit secrets — NEVER commit these
+.streamlit/secrets.toml
+
+# Local SQLite database — production uses Postgres
+streamlit_qc/data/qc_components.db
+streamlit_qc/data/*.db
+streamlit_qc/data/*.db-journal
+streamlit_qc/data/*.db-wal
+streamlit_qc/data/*.db-shm
+
+# Cloudflared
+cloudflared.exe
+URL_HIEN_TAI.txt
+tunnel.log*
+
+# Backups
+.backup_*.db
+.restore_*.db
+
+# Secrets file (notes)
+SECRETS.txt
+
+# Logs
+*.log
+
+# Uploaded files cache
+.uploads/

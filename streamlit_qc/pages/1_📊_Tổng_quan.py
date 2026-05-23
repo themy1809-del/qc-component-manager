@@ -1,0 +1,427 @@
+# -*- coding: utf-8 -*-
+"""Page: Tổng quan (Dashboard) — v2.1 Premium visual."""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+_THIS = Path(__file__).resolve()
+_ROOT = _THIS.parent.parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+
+from streamlit_qc.core.constants import (
+    APP_NAME,
+    STATUS_COLORS,
+    STATUS_LABELS,
+    STATUS_ACCEPTED,
+    STATUS_FAILED,
+    STATUS_IN_PROGRESS,
+    STATUS_PASSED,
+    STATUS_PENDING,
+)
+from streamlit_qc.core.date_utils import format_date_vn
+from streamlit_qc.core.state import get_current_project_id, get_db, init_session_state
+from streamlit_qc.core.theme import apply_theme
+from streamlit_qc.core.ui import project_info_strip, render_page_header, render_top_nav
+from streamlit_qc.services import dashboard_service
+
+st.set_page_config(
+    page_title=f"Tổng quan · {APP_NAME}",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+apply_theme()
+init_session_state()
+db = get_db()
+render_top_nav(active_page="tongquan")
+
+proj = render_page_header(
+    "Tổng quan",
+    subtitle="Tiến độ nghiệm thu cấu kiện theo dự án",
+    page_icon="📊",
+)
+pid = get_current_project_id()
+if pid is None or proj is None:
+    st.warning("Chưa có dự án. Bấm **+ Dự án mới** ở header trên.")
+    st.stop()
+
+# ============================================================
+# CSS cho dashboard v2.1 — premium look
+# ============================================================
+st.markdown("""
+<style>
+/* Hero progress section */
+.hero-progress {
+    background: linear-gradient(135deg, #0F1E40 0%, #1E3A8A 100%);
+    border-radius: 14px;
+    padding: 28px 32px;
+    color: #FFFFFF;
+    box-shadow: 0 6px 24px rgba(15, 30, 64, 0.18);
+    margin-bottom: 6px;
+}
+.hero-progress .label {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #FCE7A1;
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+.hero-progress .sub-label {
+    font-size: 13px;
+    color: rgba(255,255,255,0.78);
+    margin-bottom: 16px;
+}
+.hero-progress .big-number {
+    font-size: 56px;
+    font-weight: 800;
+    line-height: 1.0;
+    color: #FFFFFF;
+    letter-spacing: -1px;
+    margin-bottom: 4px;
+}
+.hero-progress .ratio {
+    font-size: 15px;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 18px;
+}
+.hero-progress .bar-track {
+    width: 100%;
+    height: 16px;
+    background: rgba(255,255,255,0.16);
+    border-radius: 10px;
+    overflow: hidden;
+}
+.hero-progress .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #D4A744 0%, #FCE7A1 100%);
+    border-radius: 10px;
+    box-shadow: 0 0 12px rgba(212, 167, 68, 0.5);
+    transition: width 0.6s ease;
+}
+
+/* KPI cards */
+.kpi-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px 20px 14px 20px;
+    box-shadow: 0 1px 3px rgba(15, 30, 64, 0.05);
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    height: 138px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+.kpi-card:hover {
+    box-shadow: 0 8px 24px rgba(15, 30, 64, 0.10);
+    transform: translateY(-2px);
+}
+.kpi-card .accent-bar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 4px;
+}
+.kpi-card .icon-circle {
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    margin-bottom: 4px;
+}
+.kpi-card .label {
+    color: #475569;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+}
+.kpi-card .value {
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1.0;
+    letter-spacing: -1px;
+    margin-top: 2px;
+}
+.kpi-card .sub {
+    color: #94a3b8;
+    font-size: 12px;
+    margin-top: 6px;
+}
+
+/* Section title */
+.section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #0F1E40;
+    margin: 14px 0 12px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.section-title::before {
+    content: "";
+    width: 4px;
+    height: 16px;
+    background: #D4A744;
+    border-radius: 2px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+n_comp = db.conn.execute(
+    "SELECT COUNT(*) c FROM components WHERE project_id=?", (pid,)
+).fetchone()["c"]
+project_info_strip(proj, n_comp=n_comp)
+
+# ============================================================
+# Filter xưởng
+# ============================================================
+workshop_list = dashboard_service.get_workshop_list(db, pid)
+col_filter, col_refresh = st.columns([4, 1])
+with col_filter:
+    options = ["(Tất cả xưởng)"] + workshop_list
+    selected = st.selectbox("🏭 Lọc theo xưởng", options, index=0)
+with col_refresh:
+    st.write("")
+    st.write("")
+    if st.button("🔄 Làm mới", use_container_width=True):
+        st.rerun()
+
+ws_filter = None if selected == "(Tất cả xưởng)" else selected
+
+with st.spinner("Đang tính số liệu..."):
+    data = dashboard_service.compute_dashboard(db, pid, workshop_filter=ws_filter)
+
+counts = data.counts
+total = counts.get("TOTAL", 0)
+done = counts.get(STATUS_PASSED, 0) + counts.get(STATUS_ACCEPTED, 0)
+progress_pct = round(done * 100 / total, 1) if total else 0.0
+
+# ============================================================
+# HERO: Tiến độ tổng thể — Navy gradient + Gold progress bar
+# ============================================================
+st.markdown(f"""
+<div class="hero-progress">
+    <div class="label">Tiến độ tổng thể</div>
+    <div class="sub-label">PASSED + ACCEPTED · {selected}</div>
+    <div class="big-number">{progress_pct}%</div>
+    <div class="ratio">{done:,} / {total:,} cấu kiện đã hoàn thành</div>
+    <div class="bar-track">
+        <div class="bar-fill" style="width: {min(progress_pct, 100)}%;"></div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.write("")
+
+# ============================================================
+# KPI CARDS — icon + accent + drill-down
+# ============================================================
+st.markdown('<div class="section-title">Chỉ số kiểm tra</div>', unsafe_allow_html=True)
+
+KPI_ICONS = {
+    "TOTAL": ("📦", "#dbeafe"),
+    STATUS_PENDING: ("⏳", "#f1f5f9"),
+    STATUS_IN_PROGRESS: ("🔧", "#fef3c7"),
+    STATUS_ACCEPTED: ("✅", "#d1fae5"),
+    STATUS_FAILED: ("⚠️", "#fee2e2"),
+    STATUS_PASSED: ("🏆", "#dcfce7"),
+}
+
+card_specs = [
+    ("TOTAL", STATUS_LABELS["TOTAL"], STATUS_COLORS["TOTAL"]),
+    (STATUS_PENDING, STATUS_LABELS[STATUS_PENDING], STATUS_COLORS[STATUS_PENDING]),
+    (STATUS_IN_PROGRESS, STATUS_LABELS[STATUS_IN_PROGRESS], STATUS_COLORS[STATUS_IN_PROGRESS]),
+    (STATUS_ACCEPTED, STATUS_LABELS[STATUS_ACCEPTED], STATUS_COLORS[STATUS_ACCEPTED]),
+]
+if counts.get(STATUS_FAILED, 0) > 0:
+    card_specs.append((STATUS_FAILED, STATUS_LABELS[STATUS_FAILED], STATUS_COLORS[STATUS_FAILED]))
+if counts.get(STATUS_PASSED, 0) > 0:
+    card_specs.append((STATUS_PASSED, STATUS_LABELS[STATUS_PASSED], STATUS_COLORS[STATUS_PASSED]))
+
+cols = st.columns(len(card_specs))
+for col, (key, label, color) in zip(cols, card_specs):
+    with col:
+        value = counts.get(key, 0)
+        icon, icon_bg = KPI_ICONS.get(key, ("•", "#f1f5f9"))
+        pct_of_total = (value * 100 / total) if total and key != "TOTAL" else None
+        sub_html = (
+            f'<div class="sub">{pct_of_total:.1f}% tổng</div>' if pct_of_total is not None
+            else f'<div class="sub">cấu kiện trong dự án</div>'
+        )
+        st.markdown(
+            f"""<div class="kpi-card">
+                <div class="accent-bar" style="background:{color};"></div>
+                <div>
+                    <span class="icon-circle" style="background:{icon_bg};">{icon}</span>
+                    <div class="label">{label}</div>
+                    <div class="value" style="color:{color};">{value:,}</div>
+                </div>
+                {sub_html}
+            </div>""",
+            unsafe_allow_html=True,
+        )
+        if value > 0:
+            btn_label = "🔎 Xem danh sách" if key != "TOTAL" else "🔎 Xem tất cả"
+            if st.button(btn_label, key=f"drill_{key}", use_container_width=True):
+                st.session_state["preset_status_filter"] = key
+                st.switch_page("pages/4_🔧_Cấu_kiện.py")
+
+st.write("")
+
+# ============================================================
+# CHARTS: Donut + Bar
+# ============================================================
+if total > 0:
+    col_pie, col_bar = st.columns([1, 2], gap="medium")
+    with col_pie:
+        st.markdown('<div class="section-title">Tỉ lệ trạng thái</div>', unsafe_allow_html=True)
+        pie_data = pd.DataFrame([
+            {"Trạng thái": STATUS_LABELS[s], "Số lượng": counts.get(s, 0)}
+            for s in [STATUS_ACCEPTED, STATUS_IN_PROGRESS, STATUS_PENDING, STATUS_FAILED, STATUS_PASSED]
+            if counts.get(s, 0) > 0
+        ])
+        if not pie_data.empty:
+            color_map = {STATUS_LABELS[s]: STATUS_COLORS[s] for s in STATUS_COLORS}
+            fig_pie = px.pie(pie_data, names="Trạng thái", values="Số lượng",
+                            color="Trạng thái", color_discrete_map=color_map, hole=0.58)
+            fig_pie.update_traces(
+                textposition="outside",
+                textinfo="percent+label",
+                textfont=dict(size=12, color="#0F172A"),
+                marker=dict(line=dict(color="#FFFFFF", width=2)),
+                pull=[0.02] * len(pie_data),
+            )
+            fig_pie.update_layout(
+                showlegend=False,
+                height=340,
+                margin=dict(l=10, r=10, t=10, b=10),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                annotations=[dict(
+                    text=f"<b>{progress_pct}%</b><br><span style='font-size:11px;color:#64748b'>hoàn thành</span>",
+                    x=0.5, y=0.5, showarrow=False,
+                    font=dict(size=22, color="#0F1E40"),
+                )],
+            )
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+    with col_bar:
+        st.markdown('<div class="section-title">% Hoàn thành theo xưởng</div>', unsafe_allow_html=True)
+        if data.workshop_stats:
+            bar_df = pd.DataFrame(data.workshop_stats).sort_values("percent", ascending=True)
+            # Phân ngưỡng màu rõ ràng theo % hoàn thành
+            def _bar_color(p):
+                if p < 30:   return "#DC2626"   # đỏ — chậm
+                if p < 50:   return "#EA580C"   # cam đậm — cần đẩy
+                if p < 70:   return "#F59E0B"   # vàng cam — trung bình
+                if p < 85:   return "#16A34A"   # xanh — khá
+                return "#0F766E"                # teal đậm — tốt
+            bar_df = bar_df.copy()
+            bar_df["color"] = bar_df["percent"].apply(_bar_color)
+            # Dùng go.Bar để gán màu từng bar độc lập (không qua color mapping)
+            import plotly.graph_objects as go
+            fig_bar = go.Figure(go.Bar(
+                x=bar_df["percent"],
+                y=bar_df["workshop"],
+                orientation="h",
+                text=bar_df["percent"].apply(lambda v: f"<b>{v}%</b>"),
+                textposition="outside",
+                textfont=dict(size=13, color="#0F172A"),
+                marker=dict(
+                    color=bar_df["color"].tolist(),
+                    line=dict(width=0),
+                ),
+                hovertemplate="<b>%{y}</b><br>%{x}%<extra></extra>",
+            ))
+            fig_bar.update_layout(
+                height=340,
+                margin=dict(l=10, r=30, t=10, b=10),
+                xaxis=dict(
+                    range=[0, 110],
+                    showgrid=True, gridcolor="#f1f5f9",
+                    tickfont=dict(size=11, color="#64748b"),
+                    title=dict(text="% Hoàn thành", font=dict(size=12, color="#64748b")),
+                ),
+                yaxis=dict(tickfont=dict(size=13, color="#0F172A", family="Segoe UI")),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                showlegend=False,
+                bargap=0.35,
+            )
+            st.plotly_chart(fig_bar, use_container_width=True)
+            # Legend màu nhỏ ở dưới chart
+            st.markdown(
+                """<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;
+                           color:#64748b;margin-top:-8px;justify-content:center;">
+                    <span><span style="display:inline-block;width:10px;height:10px;background:#DC2626;border-radius:2px;vertical-align:middle;"></span> &lt; 30% Chậm</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;background:#EA580C;border-radius:2px;vertical-align:middle;"></span> 30-50% Cần đẩy</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;background:#F59E0B;border-radius:2px;vertical-align:middle;"></span> 50-70% Trung bình</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;background:#16A34A;border-radius:2px;vertical-align:middle;"></span> 70-85% Khá</span>
+                    <span><span style="display:inline-block;width:10px;height:10px;background:#0F766E;border-radius:2px;vertical-align:middle;"></span> ≥ 85% Tốt</span>
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+st.write("")
+
+# ============================================================
+# THỐNG KÊ THEO XƯỞNG
+# ============================================================
+st.markdown('<div class="section-title">Thống kê chi tiết theo Xưởng</div>', unsafe_allow_html=True)
+if data.workshop_stats:
+    ws_df = pd.DataFrame(data.workshop_stats).rename(columns={
+        "workshop": "🏭 Xưởng", "TOTAL": "Tổng",
+        "PENDING": "Chưa KT", "IN_PROGRESS": "Đã Fit-up",
+        "PASSED": "Đạt", "FAILED": "K.đạt", "ACCEPTED": "Đã NT",
+        "percent": "% Hoàn thành",
+    })
+    if "Đạt" in ws_df.columns and ws_df["Đạt"].sum() == 0:
+        ws_df = ws_df.drop(columns=["Đạt"])
+    if "K.đạt" in ws_df.columns and ws_df["K.đạt"].sum() == 0:
+        ws_df = ws_df.drop(columns=["K.đạt"])
+
+    st.dataframe(
+        ws_df, use_container_width=True, hide_index=True,
+        column_config={
+            "% Hoàn thành": st.column_config.ProgressColumn(
+                "% Hoàn thành", format="%.1f%%",
+                min_value=0.0, max_value=100.0),
+            "Tổng": st.column_config.NumberColumn(format="%d"),
+            "Chưa KT": st.column_config.NumberColumn(format="%d"),
+            "Đã Fit-up": st.column_config.NumberColumn(format="%d"),
+            "Đã NT": st.column_config.NumberColumn(format="%d"),
+        },
+    )
+
+st.write("")
+
+# ============================================================
+# LỊCH SỬ KIỂM TRA GẦN NHẤT
+# ============================================================
+st.markdown(
+    '<div class="section-title">Lịch sử kiểm tra gần nhất '
+    '<span style="font-weight:400;color:#94a3b8;font-size:13px;">· 200 record gần nhất</span></div>',
+    unsafe_allow_html=True
+)
+if data.recent_inspections:
+    recent_df = pd.DataFrame(data.recent_inspections)
+    recent_df["date"] = recent_df["date"].apply(format_date_vn)
+    recent_df = recent_df.rename(columns={
+        "date": "📅 Ngày KT", "code": "🔧 Mã cấu kiện",
+        "type": "Loại", "result": "KQ",
+        "inspector": "👤 Người KT", "report": "📋 Số báo cáo",
+    })
+    st.dataframe(recent_df, use_container_width=True, hide_index=True, height=380)
+else:
+    st.info("Chưa có inspection nào. Vào **Import Daily** để nạp file kiểm tra.")

@@ -1,0 +1,2 @@
+# Thư mục chứa SQLite DB (qc_components.db) — tự sinh khi chạy app lần đầu.
+# File DB không commit vào git (xem .gitignore).

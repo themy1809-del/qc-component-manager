@@ -1,0 +1,426 @@
+# -*- coding: utf-8 -*-
+"""QC Component Manager Web v2.4 — Minimal Workshop Dashboard.
+
+Triết lý: ít KPI, nhiều visual, dễ click.
+- Hero compact 1 dòng
+- Workshop grid: chỉ tên + % + thanh tiến độ
+- Click workshop → panel chi tiết với donut + activity
+- Nav tiles cuối trang
+"""
+from __future__ import annotations
+
+import datetime as dt
+import json
+import re
+import sys
+from pathlib import Path
+
+_THIS = Path(__file__).resolve()
+_PARENT = _THIS.parent.parent
+if str(_PARENT) not in sys.path:
+    sys.path.insert(0, str(_PARENT))
+
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+from streamlit_qc.core.constants import (
+    APP_NAME,
+    APP_VERSION,
+    COMPANY,
+    STATUS_ACCEPTED,
+    STATUS_FAILED,
+    STATUS_IN_PROGRESS,
+    STATUS_PASSED,
+    STATUS_PENDING,
+)
+from streamlit_qc.core.state import get_current_project_id, get_db, init_session_state
+from streamlit_qc.core.theme import apply_theme
+from streamlit_qc.core.ui import empty_state, render_page_header, render_top_nav
+from streamlit_qc.services import project_service
+
+st.set_page_config(
+    page_title=f"{APP_NAME} v{APP_VERSION}",
+    page_icon="🏗️",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+apply_theme()
+init_session_state()
+db = get_db()
+render_top_nav(active_page="home")
+
+proj = render_page_header(
+    "Trang chủ",
+    subtitle=f"Dashboard tương tác · {COMPANY}",
+    page_icon="🏠",
+)
+
+
+def emit(html: str) -> None:
+    cleaned = re.sub(r"^[ \t]+", "", html, flags=re.MULTILINE)
+    st.markdown(cleaned, unsafe_allow_html=True)
+
+
+emit("""
+<style>
+/* Hero — 1 dòng, gọn */
+.hero {
+  background: linear-gradient(135deg, #0F1E40 0%, #1E3A8A 100%);
+  border-radius: 12px; padding: 16px 22px; color: #fff;
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  flex-wrap: wrap; margin-bottom: 18px;
+  box-shadow: 0 4px 16px rgba(15, 30, 64, 0.16);
+}
+.hero .name {font-size: 18px; font-weight: 700; margin: 0;}
+.hero .meta {color: rgba(255,255,255,0.72); font-size: 12px; margin-top: 3px;}
+.hero .pct {font-size: 30px; font-weight: 800; color: #FCE7A1; line-height: 1; letter-spacing: -0.5px;}
+.hero .ratio {color: rgba(255,255,255,0.72); font-size: 11px; margin-top: 2px;}
+
+/* Section title minimal */
+.sec {
+  font-size: 14px; font-weight: 700; color: #0F1E40;
+  margin: 14px 0 10px 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.sec::before {content: ""; width: 3px; height: 14px; background: #D4A744; border-radius: 2px;}
+.sec .sub {font-weight: 400; color: #94A3B8; font-size: 12px;}
+
+/* Workshop card — VERY MINIMAL */
+.ws {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 14px 16px; min-height: 90px;
+  transition: all 0.18s ease; position: relative; overflow: hidden;
+}
+.ws:hover {box-shadow: 0 6px 16px rgba(15, 30, 64, 0.10); border-color: #D4A744;}
+.ws.active {border: 2px solid #D4A744; background: #fffdf7; box-shadow: 0 4px 14px rgba(212, 167, 68, 0.15);}
+.ws .row {display: flex; justify-content: space-between; align-items: baseline;}
+.ws .nm {font-size: 17px; font-weight: 800; color: #0F1E40; letter-spacing: -0.3px;}
+.ws .pc {font-size: 24px; font-weight: 800; line-height: 1; letter-spacing: -0.5px;}
+.ws .bar {height: 7px; background: #f1f5f9; border-radius: 4px; overflow: hidden; margin-top: 8px;}
+.ws .bar .fill {height: 100%; border-radius: 4px; transition: width 0.6s ease;}
+.ws .tot {font-size: 11px; color: #94A3B8; margin-top: 6px;}
+
+/* Workshop detail panel */
+.panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-left: 5px solid #D4A744;
+  border-radius: 12px;
+  padding: 18px 22px;
+  margin-top: 10px;
+  box-shadow: 0 4px 14px rgba(15, 30, 64, 0.06);
+}
+.panel-head {display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 10px;}
+.panel-head .nm {font-size: 22px; font-weight: 800; color: #0F1E40; margin: 0;}
+.panel-head .sub {font-size: 12px; color: #64748B;}
+.panel-head .pct {font-size: 38px; font-weight: 800; line-height: 1; letter-spacing: -1px;}
+
+/* Activity feed */
+.act-feed {background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden;}
+.act-row {
+  border-bottom: 1px solid #f1f5f9; padding: 10px 14px;
+  display: flex; gap: 10px; align-items: center; font-size: 12px;
+}
+.act-row:last-child {border-bottom: none;}
+.act-row:hover {background: #fafbfc;}
+.act-row .typ {padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #f1f5f9; color: #475569;}
+.act-row .res {padding: 2px 8px; border-radius: 6px; font-weight: 700; font-size: 10px;}
+.res-pass {background: #dcfce7; color: #166534;}
+.res-fail {background: #fee2e2; color: #991b1b;}
+.res-rec {background: #fef3c7; color: #92400e;}
+
+/* Nav tile minimal */
+.nav {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  padding: 12px 8px; text-align: center; height: 78px;
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+  transition: all .15s ease;
+}
+.nav:hover {border-color: #D4A744; box-shadow: 0 4px 12px rgba(15,30,64,.08); transform: translateY(-2px);}
+.nav .ic {font-size: 18px;}
+.nav .lbl {font-weight: 700; color: #0F1E40; font-size: 11px;}
+</style>
+""")
+
+
+# ============================================================
+# Data
+# ============================================================
+projects = project_service.list_projects(db)
+if not projects:
+    empty_state(icon="📁", title="Chưa có dự án nào",
+                description="Bấm nút **+ Dự án mới** ở header trên để bắt đầu.")
+    st.stop()
+
+active_pid = get_current_project_id()
+if active_pid is None or proj is None:
+    st.warning("Chọn dự án ở header trên để bắt đầu.")
+    st.stop()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def project_workshops(_db, pid: int) -> dict:
+    """Dùng DB class — hỗ trợ cả SQLite + Postgres."""
+    rows = _db.conn.execute(
+        "SELECT status, data_json FROM components WHERE project_id=?", (pid,)
+    ).fetchall()
+    ws_data: dict[str, dict] = {}
+    total_proj = 0
+    done_proj = 0
+    for r in rows:
+        d = json.loads(r["data_json"])
+        w = str(d.get("workshop") or "(không xưởng)")
+        if w not in ws_data:
+            ws_data[w] = {"workshop": w, "TOTAL": 0,
+                          "PENDING": 0, "IN_PROGRESS": 0,
+                          "PASSED": 0, "FAILED": 0, "ACCEPTED": 0}
+        ws_data[w]["TOTAL"] += 1
+        ws_data[w][r["status"]] = ws_data[w].get(r["status"], 0) + 1
+        total_proj += 1
+        if r["status"] in (STATUS_PASSED, STATUS_ACCEPTED):
+            done_proj += 1
+    workshops = []
+    for w in sorted(ws_data.keys()):
+        s = ws_data[w]
+        done = s["PASSED"] + s["ACCEPTED"]
+        s["percent"] = round(done * 100 / s["TOTAL"], 1) if s["TOTAL"] else 0.0
+        workshops.append(s)
+    pct_proj = round(done_proj * 100 / total_proj, 1) if total_proj else 0.0
+    return {
+        "workshops": workshops,
+        "total_proj": total_proj,
+        "done_proj": done_proj,
+        "pct_proj": pct_proj,
+    }
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def workshop_activity(_db, pid: int, workshop: str, limit: int = 10) -> list[dict]:
+    rows = _db.conn.execute("""
+        SELECT i.inspection_date, i.imported_at, i.inspection_type, i.result,
+               i.inspector, c.code AS comp_code, c.data_json
+        FROM inspections i JOIN components c ON i.component_id = c.id
+        WHERE i.project_id = ? ORDER BY i.id DESC LIMIT 800
+    """, (pid,)).fetchall()
+    out = []
+    for r in rows:
+        if len(out) >= limit:
+            break
+        d = json.loads(r["data_json"])
+        if str(d.get("workshop") or "(không xưởng)") != workshop:
+            continue
+        out.append(dict(r))
+    return out
+
+
+data = project_workshops(db, active_pid)
+workshops = data["workshops"]
+total_proj = data["total_proj"]
+done_proj = data["done_proj"]
+pct_proj = data["pct_proj"]
+
+
+def pct_color(p: float) -> str:
+    if p < 30:  return "#DC2626"
+    if p < 50:  return "#EA580C"
+    if p < 70:  return "#F59E0B"
+    if p < 85:  return "#16A34A"
+    return "#0F766E"
+
+
+# ============================================================
+# 1. HERO — 1 dòng compact
+# ============================================================
+emit(f"""
+<div class="hero">
+<div style="flex:1;min-width:0;">
+<div class="name">🏗️ {proj['name']}</div>
+<div class="meta">Mã: <b>{proj['code']}</b> · {proj.get('location') or '—'} · {proj.get('owner') or '—'} · {len(workshops)} xưởng · {total_proj:,} cấu kiện</div>
+</div>
+<div style="text-align:right;">
+<div class="pct">{pct_proj}%</div>
+<div class="ratio">{done_proj:,} / {total_proj:,} đã hoàn thành</div>
+</div>
+</div>
+""")
+
+# ============================================================
+# 2. WORKSHOP GRID — MINIMAL
+# ============================================================
+if not workshops:
+    st.info("Dự án này chưa có dữ liệu xưởng. Hãy import Master trước.")
+    st.stop()
+
+emit('<div class="sec">🏭 Xưởng <span class="sub">· click vào card để xem chi tiết</span></div>')
+
+workshops_sorted = sorted(workshops, key=lambda x: x["percent"], reverse=True)
+
+if "selected_workshop" not in st.session_state:
+    st.session_state["selected_workshop"] = workshops_sorted[0]["workshop"]
+selected_ws = st.session_state["selected_workshop"]
+
+# Grid: 5 cột mỗi hàng
+n_per_row = 5
+for row_start in range(0, len(workshops_sorted), n_per_row):
+    cols = st.columns(n_per_row)
+    for i, col in enumerate(cols):
+        idx = row_start + i
+        if idx >= len(workshops_sorted):
+            break
+        w = workshops_sorted[idx]
+        with col:
+            color = pct_color(w["percent"])
+            active_cls = " active" if w["workshop"] == selected_ws else ""
+            emit(
+                f'<div class="ws{active_cls}">'
+                f'<div class="row">'
+                f'<div class="nm">{w["workshop"]}</div>'
+                f'<div class="pc" style="color:{color};">{w["percent"]}%</div>'
+                f'</div>'
+                f'<div class="bar"><div class="fill" style="width:{min(w["percent"],100)}%;background:{color};"></div></div>'
+                f'<div class="tot">{w["TOTAL"]:,} cấu kiện</div>'
+                f'</div>'
+            )
+            # Nút ghost với label rút gọn
+            if st.button(
+                f"Chọn",
+                key=f"ws_{w['workshop']}",
+                use_container_width=True,
+                type=("primary" if w["workshop"] == selected_ws else "secondary"),
+            ):
+                st.session_state["selected_workshop"] = w["workshop"]
+                st.rerun()
+
+# ============================================================
+# 3. WORKSHOP DETAIL PANEL — chỉ donut + activity + action
+# ============================================================
+selected = next((w for w in workshops_sorted if w["workshop"] == selected_ws), None)
+if selected:
+    color_sel = pct_color(selected["percent"])
+    bk = selected["PENDING"] + selected["IN_PROGRESS"]
+    nt = selected["ACCEPTED"]
+    fail = selected["FAILED"]
+
+    emit(f"""
+<div class="panel">
+<div class="panel-head">
+<div>
+<div class="nm">🏭 {selected['workshop']}</div>
+<div class="sub">{selected['TOTAL']:,} cấu kiện trong xưởng này</div>
+</div>
+<div style="text-align:right;">
+<div style="font-size:10px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.8px;">% Hoàn thành</div>
+<div class="pct" style="color:{color_sel};">{selected['percent']}%</div>
+</div>
+</div>
+</div>
+""")
+
+    # 2 cột: Donut | Activity
+    dcol1, dcol2 = st.columns([1, 2], gap="medium")
+
+    with dcol1:
+        # Donut compact
+        pie_df = pd.DataFrame([
+            {"label": "Đã NT",      "value": selected["ACCEPTED"],    "color": "#0F766E"},
+            {"label": "Đã Fit-up",  "value": selected["IN_PROGRESS"], "color": "#D97706"},
+            {"label": "Chưa KT",    "value": selected["PENDING"],     "color": "#94A3B8"},
+            {"label": "Đạt lẻ",     "value": selected["PASSED"],      "color": "#16A34A"},
+            {"label": "Không đạt",  "value": selected["FAILED"],      "color": "#DC2626"},
+        ])
+        pie_df = pie_df[pie_df["value"] > 0]
+        if not pie_df.empty:
+            fig = go.Figure(go.Pie(
+                labels=pie_df["label"], values=pie_df["value"],
+                marker=dict(colors=pie_df["color"].tolist(), line=dict(color="#fff", width=2)),
+                hole=0.6, textposition="outside", textinfo="percent+label",
+                textfont=dict(size=10, color="#0F172A"),
+            ))
+            fig.update_layout(
+                showlegend=False, height=260,
+                margin=dict(l=8, r=8, t=8, b=8),
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                annotations=[dict(
+                    text=f"<b>{selected['percent']}%</b><br>"
+                         f"<span style='font-size:10px;color:#64748B;'>hoàn thành</span>",
+                    x=0.5, y=0.5, showarrow=False, font=dict(size=20, color="#0F1E40"),
+                )],
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+    with dcol2:
+        emit(f'<div style="font-size:13px;font-weight:600;color:#0F1E40;margin-bottom:8px;">🕒 Hoạt động gần nhất ở {selected["workshop"]}</div>')
+        acts = workshop_activity(db, active_pid, selected["workshop"], limit=8)
+        if acts:
+            rows_html = ""
+            for a in acts:
+                res = (a.get("result") or "").upper()
+                res_cls = "res-pass" if res == "PASS" else ("res-fail" if res == "FAIL" else "res-rec")
+                res_label = {"PASS": "✓ Đạt", "FAIL": "✗ Fail", "RECHECK": "↻ Recheck"}.get(res, res or "—")
+                t = a.get("inspection_type", "—")
+                t_show = "Fit-up" if t == "FUR" else ("Final" if t == "DGRP" else t)
+                inspector = a.get("inspector") or "—"
+                d = a.get("inspection_date") or a.get("imported_at") or ""
+                d10 = d[:10] if d else "—"
+                try:
+                    d_show = dt.date.fromisoformat(d10).strftime("%d/%m") if d10 != "—" else "—"
+                except Exception:
+                    d_show = d10
+                rows_html += (
+                    f'<div class="act-row">'
+                    f'<span class="typ">{t_show}</span>'
+                    f'<div style="flex:1;min-width:0;">'
+                    f'<div style="font-weight:600;color:#0F172A;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{a["comp_code"]}</div>'
+                    f'<div style="color:#94A3B8;font-size:10px;">{inspector} · {d_show}</div>'
+                    f'</div>'
+                    f'<span class="res {res_cls}">{res_label}</span>'
+                    f'</div>'
+                )
+            emit(f'<div class="act-feed">{rows_html}</div>')
+        else:
+            st.info(f"Xưởng {selected['workshop']} chưa có inspection nào.")
+
+    # Nút action ở đáy detail
+    st.write("")
+    ba1, ba2, _ = st.columns([2, 2, 4])
+    with ba1:
+        if st.button(f"🔧 Xem cấu kiện {selected['workshop']}",
+                     key="goto_comp", use_container_width=True, type="primary"):
+            st.session_state["flt_workshop"] = selected["workshop"]
+            st.switch_page("pages/4_🔧_Cấu_kiện.py")
+    with ba2:
+        if st.button("📊 Chart tổng quan dự án",
+                     key="goto_dash", use_container_width=True):
+            st.switch_page("pages/1_📊_Tổng_quan.py")
+
+st.write("")
+
+# ============================================================
+# 4. NAV TILES — minimal
+# ============================================================
+emit('<div class="sec">📍 Điều hướng</div>')
+actions = [
+    ("📊", "Tổng quan", "pages/1_📊_Tổng_quan.py"),
+    ("📥", "Import Master", "pages/2_📥_Import_Master.py"),
+    ("📤", "Import Daily", "pages/3_📤_Import_Daily.py"),
+    ("🔧", "Cấu kiện", "pages/4_🔧_Cấu_kiện.py"),
+    ("📈", "Báo cáo", "pages/5_📈_Báo_cáo.py"),
+    ("⚙️", "Quản trị", "pages/6_⚙_Quản_trị.py"),
+]
+cols = st.columns(6)
+for i, (icon, title, page) in enumerate(actions):
+    with cols[i]:
+        emit(
+            f'<div class="nav">'
+            f'<div class="ic">{icon}</div>'
+            f'<div class="lbl">{title}</div>'
+            f'</div>'
+        )
+        if st.button("Mở", key=f"nav_{i}", use_container_width=True):
+            st.switch_page(page)
+
+emit(
+    f'<div style="text-align:center;color:#94A3B8;font-size:11px;padding-top:18px;margin-top:18px;'
+    f'border-top:1px solid #E2E8F0;">QC Component Manager v{APP_VERSION} · © 2026 {COMPANY}</div>'
+)

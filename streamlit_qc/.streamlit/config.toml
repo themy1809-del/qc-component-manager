@@ -1,0 +1,29 @@
+# Streamlit config cho QC Component Manager Web v2.0
+# Đại Dũng - phòng QC
+
+[theme]
+# Tone xanh navy giống bản Tkinter (#1e3a8a)
+primaryColor = "#1e3a8a"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f1f5f9"
+textColor = "#0f172a"
+font = "sans serif"
+
+[server]
+# Mở port 8501 trong LAN - các QC vào bằng http://<server-ip>:8501
+headless = true
+port = 8501
+address = "0.0.0.0"
+# Upload file PKL có thể lên tới 50MB (xlsb VIOLA 5MB nhưng có file khác lớn hơn)
+maxUploadSize = 100
+# Tắt CORS/XSRF cho mạng nội bộ (bật lại khi triển khai có HTTPS)
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+gatherUsageStats = false
+
+[client]
+# Hiện toolbar developer chỉ cho admin (production tắt)
+toolbarMode = "minimal"
+showErrorDetails = true

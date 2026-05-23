@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>UML - Hệ thống Quản lý Nghiệm thu Cấu kiện</title>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; margin: 24px; background: #f5f7fa; color: #1f2937; }
+  h1 { color: #0f172a; border-bottom: 3px solid #2563eb; padding-bottom: 8px; }
+  h2 { color: #1e40af; margin-top: 32px; }
+  .diagram { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); margin-bottom: 24px; overflow-x: auto; }
+  .legend { font-size: 13px; color: #475569; margin-top: 8px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+  th, td { border: 1px solid #cbd5e1; padding: 6px 10px; text-align: left; font-size: 13px; }
+  th { background: #e2e8f0; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>UML - Hệ thống Quản lý Nghiệm thu Cấu kiện Đa dự án</h1>
+<p><b>Tác giả:</b> oke (Chuyên gia QC) &nbsp;|&nbsp; <b>Ngày:</b> 18/05/2026 &nbsp;|&nbsp; <b>Phiên bản:</b> 1.0</p>
+
+<!-- ====================== USE CASE DIAGRAM ====================== -->
+<h2>1. Use Case Diagram</h2>
+<div class="diagram">
+<svg viewBox="0 0 1100 720" xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:1100px">
+  <!-- System boundary -->
+  <rect x="240" y="40" width="640" height="640" fill="#eff6ff" stroke="#2563eb" stroke-width="2" rx="8"/>
+  <text x="560" y="68" text-anchor="middle" font-size="18" font-weight="bold" fill="#1e3a8a">App Quản lý Nghiệm thu Cấu kiện</text>
+
+  <!-- Actors -->
+  <!-- QC Inspector -->
+  <g>
+    <circle cx="100" cy="200" r="14" fill="#fff" stroke="#0f172a" stroke-width="2"/>
+    <line x1="100" y1="214" x2="100" y2="252" stroke="#0f172a" stroke-width="2"/>
+    <line x1="78" y1="230" x2="122" y2="230" stroke="#0f172a" stroke-width="2"/>
+    <line x1="100" y1="252" x2="84" y2="278" stroke="#0f172a" stroke-width="2"/>
+    <line x1="100" y1="252" x2="116" y2="278" stroke="#0f172a" stroke-width="2"/>
+    <text x="100" y="298" text-anchor="middle" font-size="13" font-weight="bold">QC Inspector</text>
+    <text x="100" y="314" text-anchor="middle" font-size="11" fill="#475569">(Nhân viên QC)</text>
+  </g>
+
+  <!-- QC Manager -->
+  <g>
+    <circle cx="100" cy="430" r="14" fill="#fff" stroke="#0f172a" stroke-width="2"/>
+    <line x1="100" y1="444" x2="100" y2="482" stroke="#0f172a" stroke-width="2"/>
+    <line x1="78" y1="460" x2="122" y2="460" stroke="#0f172a" stroke-width="2"/>
+    <line x1="100" y1="482" x2="84" y2="508" stroke="#0f172a" stroke-width="2"/>
+    <line x1="100" y1="482" x2="116" y2="508" stroke="#0f172a" stroke-width="2"/>
+    <text x="100" y="528" text-anchor="middle" font-size="13" font-weight="bold">QC Manager</text>
+    <text x="100" y="544" text-anchor="middle" font-size="11" fill="#475569">(Trưởng nhóm QC)</text>
+  </g>
+
+  <!-- Admin -->
+  <g>
+    <circle cx="1000" cy="430" r="14" fill="#fff" stroke="#0f172a" stroke-width="2"/>
+    <line x1="1000" y1="444" x2="1000" y2="482" stroke="#0f172a" stroke-width="2"/>
+    <line x1="978" y1="460" x2="1022" y2="460" stroke="#0f172a" stroke-width="2"/>
+    <line x1="1000" y1="482" x2="984" y2="508" stroke="#0f172a" stroke-width="2"/>
+    <line x1="1000" y1="482" x2="1016" y2="508" stroke="#0f172a" stroke-width="2"/>
+    <text x="1000" y="528" text-anchor="middle" font-size="13" font-weight="bold">Admin</text>
+  </g>
+
+  <!-- Use cases (ellipses) -->
+  <g font-size="12" text-anchor="middle">
+    <ellipse cx="380" cy="120" rx="100" ry="28" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+    <text x="380" y="124">Đăng nhập</text>
+
+    <ellipse cx="380" cy="200" rx="110" ry="28" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="380" y="196">Tạo / chọn Dự án</text>
+    <text x="380" y="210" font-size="10" fill="#475569">(Project Management)</text>
+
+    <ellipse cx="380" cy="290" rx="130" ry="28" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="380" y="286">Import Danh sách Tổng</text>
+    <text x="380" y="300" font-size="10" fill="#475569">(Master Component List)</text>
+
+    <ellipse cx="380" cy="380" rx="130" ry="28" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="380" y="376">Cấu hình Mapping cột</text>
+    <text x="380" y="390" font-size="10" fill="#475569">(Column Mapping)</text>
+
+    <ellipse cx="380" cy="470" rx="130" ry="28" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="380" y="466">Import File Kiểm tra</text>
+    <text x="380" y="480" font-size="10" fill="#475569">(Daily Inspection File)</text>
+
+    <ellipse cx="380" cy="560" rx="120" ry="28" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="380" y="556">Cập nhật Trạng thái</text>
+    <text x="380" y="570" font-size="10" fill="#475569">(tự động sau import)</text>
+
+    <ellipse cx="380" cy="640" rx="110" ry="22" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="380" y="644">Tra cứu / Lọc cấu kiện</text>
+
+    <ellipse cx="720" cy="120" rx="100" ry="28" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+    <text x="720" y="124">Quản lý người dùng</text>
+
+    <ellipse cx="720" cy="200" rx="110" ry="28" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="720" y="196">Dashboard tổng quan</text>
+    <text x="720" y="210" font-size="10" fill="#475569">(Tiến độ nghiệm thu)</text>
+
+    <ellipse cx="720" cy="290" rx="110" ry="28" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="720" y="286">Duyệt / Nghiệm thu</text>
+    <text x="720" y="300" font-size="10" fill="#475569">(Approve)</text>
+
+    <ellipse cx="720" cy="380" rx="110" ry="28" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="720" y="376">Xuất Báo cáo</text>
+    <text x="720" y="390" font-size="10" fill="#475569">(Excel / PDF)</text>
+
+    <ellipse cx="720" cy="470" rx="110" ry="28" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+    <text x="720" y="466">Lịch sử kiểm tra</text>
+    <text x="720" y="480" font-size="10" fill="#475569">(Audit log)</text>
+
+    <ellipse cx="720" cy="560" rx="110" ry="28" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+    <text x="720" y="556">Sao lưu / Phục hồi</text>
+    <text x="720" y="570" font-size="10" fill="#475569">(Backup DB)</text>
+  </g>
+
+  <!-- Associations: lines from actors to use cases -->
+  <g stroke="#0f172a" stroke-width="1" fill="none">
+    <!-- QC Inspector -->
+    <line x1="116" y1="250" x2="280" y2="125"/>
+    <line x1="116" y1="250" x2="270" y2="200"/>
+    <line x1="116" y1="250" x2="250" y2="290"/>
+    <line x1="116" y1="250" x2="250" y2="470"/>
+    <line x1="116" y1="250" x2="260" y2="640"/>
+
+    <!-- QC Manager -->
+    <line x1="116" y1="480" x2="250" y2="380"/>
+    <line x1="116" y1="480" x2="260" y2="560"/>
+    <line x1="116" y1="480" x2="260" y2="640"/>
+    <line x1="116" y1="480" x2="610" y2="200"/>
+    <line x1="116" y1="480" x2="610" y2="290"/>
+    <line x1="116" y1="480" x2="610" y2="380"/>
+    <line x1="116" y1="480" x2="610" y2="470"/>
+
+    <!-- Admin -->
+    <line x1="984" y1="480" x2="820" y2="120"/>
+    <line x1="984" y1="480" x2="830" y2="560"/>
+    <line x1="984" y1="480" x2="830" y2="380"/>
+  </g>
+
+  <!-- include / extend relationships -->
+  <g font-size="10" fill="#7c3aed">
+    <line x1="380" y1="318" x2="380" y2="352" stroke="#7c3aed" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <text x="395" y="338">«include»</text>
+    <line x1="380" y1="498" x2="380" y2="532" stroke="#7c3aed" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <text x="395" y="518">«include»</text>
+  </g>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c3aed"/>
+    </marker>
+  </defs>
+</svg>
+<div class="legend">
+<b>Ghi chú màu:</b> Vàng = Authentication/Admin · Xanh dương = Nghiệp vụ chính · Xanh lá = Báo cáo/Tra cứu · Đỏ = Quản trị hệ thống · Đường nét đứt = quan hệ &lt;&lt;include&gt;&gt;.
+</div>
+</div>
+
+<!-- ====================== CLASS DIAGRAM ====================== -->
+<h2>2. Class Diagram</h2>
+<div class="diagram">
+<svg viewBox="0 0 1200 780" xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:1200px">
+  <defs>
+    <marker id="diamond" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="14" markerHeight="14" orient="auto">
+      <path d="M 0 6 L 6 0 L 12 6 L 6 12 z" fill="#fff" stroke="#0f172a"/>
+    </marker>
+    <marker id="diamondFilled" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="14" markerHeight="14" orient="auto">
+      <path d="M 0 6 L 6 0 L 12 6 L 6 12 z" fill="#0f172a"/>
+    </marker>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#0f172a"/>
+    </marker>
+  </defs>
+
+  <!-- User -->
+  <g>
+    <rect x="40" y="40" width="220" height="170" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="40" y="40" width="220" height="26" fill="#1e3a8a"/>
+    <text x="150" y="58" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">User</text>
+    <text x="50" y="84" font-size="12">- id : int (PK)</text>
+    <text x="50" y="102" font-size="12">- username : string</text>
+    <text x="50" y="120" font-size="12">- password_hash : string</text>
+    <text x="50" y="138" font-size="12">- full_name : string</text>
+    <text x="50" y="156" font-size="12">- role : Role</text>
+    <line x1="40" y1="166" x2="260" y2="166" stroke="#0f172a"/>
+    <text x="50" y="184" font-size="12">+ login() : bool</text>
+    <text x="50" y="200" font-size="12">+ hasPermission() : bool</text>
+  </g>
+
+  <!-- Project -->
+  <g>
+    <rect x="320" y="40" width="240" height="220" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="320" y="40" width="240" height="26" fill="#1e3a8a"/>
+    <text x="440" y="58" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">Project (Dự án)</text>
+    <text x="330" y="84" font-size="12">- id : int (PK)</text>
+    <text x="330" y="102" font-size="12">- code : string (UNIQUE)</text>
+    <text x="330" y="120" font-size="12">- name : string</text>
+    <text x="330" y="138" font-size="12">- location : string</text>
+    <text x="330" y="156" font-size="12">- owner : string</text>
+    <text x="330" y="174" font-size="12">- start_date / end_date : date</text>
+    <text x="330" y="192" font-size="12">- created_by : FK User</text>
+    <line x1="320" y1="202" x2="560" y2="202" stroke="#0f172a"/>
+    <text x="330" y="220" font-size="12">+ importMasterList(file)</text>
+    <text x="330" y="238" font-size="12">+ getProgress() : %</text>
+    <text x="330" y="254" font-size="12">+ exportReport()</text>
+  </g>
+
+  <!-- ColumnMapping -->
+  <g>
+    <rect x="620" y="40" width="240" height="180" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="620" y="40" width="240" height="26" fill="#1e3a8a"/>
+    <text x="740" y="58" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">ColumnMapping</text>
+    <text x="630" y="84" font-size="12">- id : int (PK)</text>
+    <text x="630" y="102" font-size="12">- project_id : FK</text>
+    <text x="630" y="120" font-size="12">- mapping_type : enum</text>
+    <text x="630" y="135" font-size="11" fill="#475569">  (MASTER / DAILY)</text>
+    <text x="630" y="156" font-size="12">- excel_column : string</text>
+    <text x="630" y="174" font-size="12">- field_name : string</text>
+    <line x1="620" y1="184" x2="860" y2="184" stroke="#0f172a"/>
+    <text x="630" y="202" font-size="12">+ apply(row) : Component</text>
+  </g>
+
+  <!-- Component -->
+  <g>
+    <rect x="320" y="330" width="260" height="280" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="320" y="330" width="260" height="26" fill="#0f5132"/>
+    <text x="450" y="348" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">Component (Cấu kiện)</text>
+    <text x="330" y="374" font-size="12">- id : int (PK)</text>
+    <text x="330" y="392" font-size="12">- project_id : FK</text>
+    <text x="330" y="410" font-size="12">- code : string</text>
+    <text x="330" y="428" font-size="12">- name : string</text>
+    <text x="330" y="446" font-size="12">- location : string</text>
+    <text x="330" y="464" font-size="12">- dimension : string</text>
+    <text x="330" y="482" font-size="12">- drawing_no : string</text>
+    <text x="330" y="500" font-size="12">- concrete_grade : string</text>
+    <text x="330" y="518" font-size="12">- planned_date : date</text>
+    <text x="330" y="536" font-size="12">- status : Status</text>
+    <text x="330" y="551" font-size="11" fill="#475569">  (Chưa KT / Đã KT / Đạt / KĐạt / Đã NT)</text>
+    <text x="330" y="572" font-size="12">- extra_fields : JSON</text>
+    <line x1="320" y1="582" x2="580" y2="582" stroke="#0f172a"/>
+    <text x="330" y="600" font-size="12">+ updateFromRecord(r)</text>
+  </g>
+
+  <!-- DailyInspection -->
+  <g>
+    <rect x="640" y="330" width="240" height="180" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="640" y="330" width="240" height="26" fill="#0f5132"/>
+    <text x="760" y="348" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">DailyInspection</text>
+    <text x="650" y="374" font-size="12">- id : int (PK)</text>
+    <text x="650" y="392" font-size="12">- project_id : FK</text>
+    <text x="650" y="410" font-size="12">- inspection_date : date</text>
+    <text x="650" y="428" font-size="12">- inspector : FK User</text>
+    <text x="650" y="446" font-size="12">- source_file : string</text>
+    <text x="650" y="464" font-size="12">- imported_at : datetime</text>
+    <line x1="640" y1="474" x2="880" y2="474" stroke="#0f172a"/>
+    <text x="650" y="492" font-size="12">+ importExcel(file)</text>
+  </g>
+
+  <!-- InspectionRecord -->
+  <g>
+    <rect x="920" y="330" width="240" height="220" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="920" y="330" width="240" height="26" fill="#0f5132"/>
+    <text x="1040" y="348" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">InspectionRecord</text>
+    <text x="930" y="374" font-size="12">- id : int (PK)</text>
+    <text x="930" y="392" font-size="12">- inspection_id : FK</text>
+    <text x="930" y="410" font-size="12">- component_code : string</text>
+    <text x="930" y="428" font-size="12">- result : enum</text>
+    <text x="930" y="443" font-size="11" fill="#475569">  (PASS / FAIL / RECHECK)</text>
+    <text x="930" y="464" font-size="12">- new_status : Status</text>
+    <text x="930" y="482" font-size="12">- note : text</text>
+    <text x="930" y="500" font-size="12">- inspector : string</text>
+    <line x1="920" y1="510" x2="1160" y2="510" stroke="#0f172a"/>
+    <text x="930" y="528" font-size="12">+ applyToComponent()</text>
+  </g>
+
+  <!-- AuditLog -->
+  <g>
+    <rect x="40" y="450" width="240" height="160" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="40" y="450" width="240" height="26" fill="#92400e"/>
+    <text x="160" y="468" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">AuditLog</text>
+    <text x="50" y="494" font-size="12">- id : int (PK)</text>
+    <text x="50" y="512" font-size="12">- user_id : FK</text>
+    <text x="50" y="530" font-size="12">- action : string</text>
+    <text x="50" y="548" font-size="12">- entity : string</text>
+    <text x="50" y="566" font-size="12">- entity_id : int</text>
+    <text x="50" y="584" font-size="12">- timestamp : datetime</text>
+    <text x="50" y="602" font-size="12">- detail : JSON</text>
+  </g>
+
+  <!-- Report -->
+  <g>
+    <rect x="920" y="600" width="240" height="160" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
+    <rect x="920" y="600" width="240" height="26" fill="#7c3aed"/>
+    <text x="1040" y="618" text-anchor="middle" fill="#fff" font-weight="bold" font-size="13">Report</text>
+    <text x="930" y="644" font-size="12">- project_id : FK</text>
+    <text x="930" y="662" font-size="12">- type : enum</text>
+    <text x="930" y="677" font-size="11" fill="#475569">  (DAILY / WEEKLY / SUMMARY)</text>
+    <text x="930" y="698" font-size="12">- generated_at : datetime</text>
+    <line x1="920" y1="708" x2="1160" y2="708" stroke="#0f172a"/>
+    <text x="930" y="726" font-size="12">+ toExcel()</text>
+    <text x="930" y="744" font-size="12">+ toPDF()</text>
+  </g>
+
+  <!-- Relationships -->
+  <!-- User --< Project (created_by) -->
+  <line x1="260" y1="120" x2="320" y2="120" stroke="#0f172a" stroke-width="1.2" marker-end="url(#arrow2)"/>
+  <text x="270" y="112" font-size="10">creates 0..*</text>
+
+  <!-- Project 1 -- * Component -->
+  <line x1="440" y1="260" x2="440" y2="330" stroke="#0f172a" stroke-width="1.2" marker-start="url(#diamondFilled)"/>
+  <text x="448" y="298" font-size="10">1..* contains</text>
+
+  <!-- Project 1 -- * ColumnMapping -->
+  <line x1="560" y1="100" x2="620" y2="100" stroke="#0f172a" stroke-width="1.2" marker-start="url(#diamondFilled)"/>
+  <text x="565" y="92" font-size="10">1..*</text>
+
+  <!-- Project 1 -- * DailyInspection -->
+  <line x1="560" y1="180" x2="640" y2="380" stroke="#0f172a" stroke-width="1.2" marker-start="url(#diamondFilled)"/>
+  <text x="585" y="270" font-size="10">1..*</text>
+
+  <!-- DailyInspection 1 -- * InspectionRecord -->
+  <line x1="880" y1="410" x2="920" y2="410" stroke="#0f172a" stroke-width="1.2" marker-start="url(#diamondFilled)"/>
+  <text x="884" y="402" font-size="10">1..*</text>
+
+  <!-- InspectionRecord --> Component (updates) -->
+  <line x1="920" y1="500" x2="580" y2="500" stroke="#0f172a" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow2)"/>
+  <text x="700" y="492" font-size="10" fill="#475569">«updates»</text>
+
+  <!-- User --< DailyInspection -->
+  <line x1="260" y1="160" x2="640" y2="425" stroke="#0f172a" stroke-width="1.2" marker-end="url(#arrow2)"/>
+  <text x="430" y="290" font-size="10">performs 0..*</text>
+
+  <!-- User --< AuditLog -->
+  <line x1="160" y1="210" x2="160" y2="450" stroke="#0f172a" stroke-width="1.2" marker-end="url(#arrow2)"/>
+  <text x="168" y="330" font-size="10">logs 0..*</text>
+
+  <!-- Project --> Report -->
+  <line x1="560" y1="220" x2="920" y2="640" stroke="#0f172a" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrow2)"/>
+  <text x="700" y="450" font-size="10" fill="#475569">«generates»</text>
+
+</svg>
+<div class="legend">
+<b>Quan hệ:</b> Hình thoi đặc = Composition (sống chết cùng cha) · Mũi tên thường = Association · Đường đứt = Dependency / «updates».
+</div>
+</div>
+
+<!-- ====================== ACTIVITY DIAGRAM ====================== -->
+<h2>3. Activity Diagram - Luồng cập nhật trạng thái cấu kiện hàng ngày</h2>
+<div class="diagram">
+<svg viewBox="0 0 900 760" xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:900px">
+  <defs>
+    <marker id="arrA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#0f172a"/>
+    </marker>
+  </defs>
+  <!-- Start -->
+  <circle cx="450" cy="40" r="14" fill="#0f172a"/>
+  <line x1="450" y1="54" x2="450" y2="80" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+
+  <!-- Activity 1 -->
+  <rect x="330" y="84" width="240" height="44" rx="22" fill="#dbeafe" stroke="#1e40af"/>
+  <text x="450" y="112" text-anchor="middle" font-size="13">QC chọn dự án và đăng nhập</text>
+  <line x1="450" y1="128" x2="450" y2="152" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+
+  <!-- Activity 2 -->
+  <rect x="300" y="156" width="300" height="44" rx="22" fill="#dbeafe" stroke="#1e40af"/>
+  <text x="450" y="184" text-anchor="middle" font-size="13">Upload file Excel kiểm tra hàng ngày</text>
+  <line x1="450" y1="200" x2="450" y2="224" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+
+  <!-- Decision: Mapping exists? -->
+  <polygon points="450,228 540,278 450,328 360,278" fill="#fef3c7" stroke="#d97706"/>
+  <text x="450" y="274" text-anchor="middle" font-size="12">Đã có Column</text>
+  <text x="450" y="290" text-anchor="middle" font-size="12">Mapping?</text>
+
+  <!-- No branch -->
+  <line x1="360" y1="278" x2="200" y2="278" stroke="#0f172a" stroke-width="1.5"/>
+  <text x="270" y="270" font-size="11" fill="#dc2626">Chưa</text>
+  <line x1="200" y1="278" x2="200" y2="310" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+  <rect x="80" y="314" width="240" height="44" rx="22" fill="#fee2e2" stroke="#b91c1c"/>
+  <text x="200" y="342" text-anchor="middle" font-size="12">Mở hộp thoại ánh xạ cột Excel → trường</text>
+  <line x1="200" y1="358" x2="200" y2="380" stroke="#0f172a" stroke-width="1.5"/>
+  <line x1="200" y1="380" x2="450" y2="380" stroke="#0f172a" stroke-width="1.5"/>
+
+  <!-- Yes branch -->
+  <line x1="540" y1="278" x2="640" y2="278" stroke="#0f172a" stroke-width="1.5"/>
+  <text x="565" y="270" font-size="11" fill="#15803d">Có</text>
+  <line x1="640" y1="278" x2="640" y2="380" stroke="#0f172a" stroke-width="1.5"/>
+  <line x1="640" y1="380" x2="450" y2="380" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+
+  <!-- Activity 3: Validate -->
+  <rect x="320" y="396" width="260" height="44" rx="22" fill="#dbeafe" stroke="#1e40af"/>
+  <text x="450" y="424" text-anchor="middle" font-size="13">Đọc và kiểm tra dữ liệu (validate)</text>
+  <line x1="450" y1="440" x2="450" y2="464" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+
+  <!-- Decision: Valid? -->
+  <polygon points="450,468 540,510 450,552 360,510" fill="#fef3c7" stroke="#d97706"/>
+  <text x="450" y="514" text-anchor="middle" font-size="12">Hợp lệ?</text>
+
+  <!-- No -> error -->
+  <line x1="360" y1="510" x2="120" y2="510" stroke="#0f172a" stroke-width="1.5"/>
+  <text x="220" y="502" font-size="11" fill="#dc2626">Không</text>
+  <line x1="120" y1="510" x2="120" y2="540" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+  <rect x="20" y="544" width="200" height="44" rx="22" fill="#fee2e2" stroke="#b91c1c"/>
+  <text x="120" y="572" text-anchor="middle" font-size="12">Hiện báo lỗi + dòng sai</text>
+  <line x1="120" y1="588" x2="120" y2="700" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+
+  <!-- Yes -> match -->
+  <line x1="540" y1="510" x2="640" y2="510" stroke="#0f172a" stroke-width="1.5"/>
+  <text x="565" y="502" font-size="11" fill="#15803d">Có</text>
+  <line x1="640" y1="510" x2="640" y2="556" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+  <rect x="500" y="560" width="280" height="44" rx="22" fill="#dcfce7" stroke="#166534"/>
+  <text x="640" y="588" text-anchor="middle" font-size="12">Match cấu kiện theo mã (code)</text>
+  <line x1="640" y1="604" x2="640" y2="628" stroke="#0f172a" stroke-width="1.5" marker-end="url(#arrA)"/>
+
+  <rect x="500" y="632" width="280" height="44" rx="22" fill="#dcfce7" stroke="#166534"/>
+  <text x="640" y="660" text-anchor="middle" font-size="12">Cập nhật trạng thái + ngày KT + ghi log</text>
+  <line x1="640" y1="676" x2="640" y2="700" stroke="#0f172a" stroke-width="1.5"/>
+
+  <!-- End -->
+  <line x1="120" y1="700" x2="640" y2="700" stroke="#0f172a" stroke-width="1.5"/>
+  <circle cx="450" cy="720" r="14" fill="#fff" stroke="#0f172a" stroke-width="2"/>
+  <circle cx="450" cy="720" r="8" fill="#0f172a"/>
+  <line x1="450" y1="700" x2="450" y2="706" stroke="#0f172a" stroke-width="1.5"/>
+</svg>
+</div>
+
+<h2>4. Bảng tóm tắt Class &amp; Trách nhiệm</h2>
+<table>
+<tr><th>Class</th><th>Trách nhiệm chính</th><th>Quan hệ</th></tr>
+<tr><td><b>User</b></td><td>Xác thực, phân quyền (Admin / Manager / Inspector)</td><td>1..* Project, 1..* DailyInspection, 1..* AuditLog</td></tr>
+<tr><td><b>Project</b></td><td>Đại diện một dự án; chứa cấu kiện, mapping, lịch sử kiểm tra</td><td>1..* Component, 1..* ColumnMapping, 1..* DailyInspection</td></tr>
+<tr><td><b>ColumnMapping</b></td><td>Lưu ánh xạ cột Excel → trường hệ thống, theo từng dự án (MASTER hoặc DAILY)</td><td>n..1 Project</td></tr>
+<tr><td><b>Component</b></td><td>Cấu kiện cần nghiệm thu; lưu thông tin và trạng thái mới nhất</td><td>n..1 Project; được cập nhật bởi InspectionRecord</td></tr>
+<tr><td><b>DailyInspection</b></td><td>Một lần import file Excel kiểm tra trong ngày</td><td>n..1 Project, 1..* InspectionRecord</td></tr>
+<tr><td><b>InspectionRecord</b></td><td>Một dòng kiểm tra (1 cấu kiện) trong file ngày → áp lên Component</td><td>n..1 DailyInspection → 1 Component</td></tr>
+<tr><td><b>AuditLog</b></td><td>Ghi mọi hành động (ai, làm gì, lúc nào) để truy vết</td><td>n..1 User</td></tr>
+<tr><td><b>Report</b></td><td>Sinh báo cáo tiến độ nghiệm thu theo dự án (Excel/PDF)</td><td>n..1 Project</td></tr>
+</table>
+
+</body>
+</html>
