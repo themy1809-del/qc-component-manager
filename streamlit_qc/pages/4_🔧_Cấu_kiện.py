@@ -162,6 +162,7 @@ def _result_label(result: str) -> str:
 df_table = pd.DataFrame([
     {
         "id": r.id,
+        "✓": False,  # Checkbox cho bulk update
         "Tên cấu kiện": r.code,
         "Bản vẽ": r.name,
         "Revision": r.rev_no,
@@ -187,6 +188,10 @@ edited = st.data_editor(
     df_table, use_container_width=True, height=600, hide_index=True,
     column_config={
         "id": None,
+        "✓": st.column_config.CheckboxColumn(
+            "✓", width="small",
+            help="Tick để chọn cấu kiện cho bulk update / xóa hàng loạt",
+        ),
         "Tên cấu kiện": st.column_config.TextColumn("Tên cấu kiện", disabled=True, width="medium"),
         "Bản vẽ": st.column_config.TextColumn("Bản vẽ", width="medium"),
         "Revision": st.column_config.TextColumn("Revision", width="small"),
@@ -210,6 +215,112 @@ edited = st.data_editor(
     },
     key=f"editor_{pid}_{status}_{search}",
 )
+
+# ============================================================
+# BULK UPDATE PANEL — hiện khi có row được tick checkbox
+# ============================================================
+selected_ids = edited[edited["✓"] == True]["id"].tolist()
+n_selected = len(selected_ids)
+
+if n_selected > 0:
+    st.markdown(
+        f'<div style="background:#fffdf7;border:2px solid #D4A744;border-radius:10px;'
+        f'padding:14px 18px;margin:10px 0;">'
+        f'<div style="font-weight:700;color:#0F1E40;font-size:14px;margin-bottom:8px;">'
+        f'🎯 Đã chọn <b style="color:#D4A744;font-size:18px;">{n_selected}</b> cấu kiện · Sửa hàng loạt:'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+    bk1, bk2, bk3, bk4, bk5 = st.columns([2, 2, 2, 1.5, 1.5])
+    with bk1:
+        bulk_field = st.selectbox(
+            "Cột cần đổi",
+            ["Xưởng", "Bản vẽ", "Revision"],
+            key="bulk_field",
+        )
+    with bk2:
+        bulk_value = st.text_input(
+            "Giá trị mới",
+            placeholder=f"Đổi thành...",
+            key="bulk_value",
+        )
+    with bk3:
+        st.write("")
+        st.write("")
+        if st.button(
+            f"💾 Áp dụng cho {n_selected} cấu kiện",
+            type="primary", use_container_width=True,
+            disabled=(not bulk_value.strip()),
+        ):
+            UI_TO_FLD = {"Xưởng": "workshop", "Bản vẽ": "name", "Revision": "rev_no"}
+            fld = UI_TO_FLD[bulk_field]
+            user = st.session_state[S_CURRENT_USER]
+            n_ok, n_fail = 0, 0
+            errors = []
+            with st.spinner(f"Đang cập nhật {n_selected} cấu kiện..."):
+                for cid in selected_ids:
+                    try:
+                        component_service.update_component_field(
+                            db, int(cid), fld, bulk_value.strip(), user_name=user
+                        )
+                        n_ok += 1
+                    except Exception as e:
+                        n_fail += 1
+                        if len(errors) < 5:
+                            errors.append(f"ID {cid}: {e}")
+            if n_ok:
+                st.success(f"✅ Đã cập nhật **{n_ok}** cấu kiện. Cột `{bulk_field}` = `{bulk_value.strip()}`")
+            if n_fail:
+                st.error(f"❌ {n_fail} thất bại. Lỗi mẫu:\n" + "\n".join(errors))
+            st.session_state.pop(SNAP_KEY, None)
+            st.rerun()
+    with bk4:
+        st.write("")
+        st.write("")
+        if st.button("✗ Bỏ chọn hết", use_container_width=True):
+            st.session_state.pop(SNAP_KEY, None)
+            st.rerun()
+    with bk5:
+        st.write("")
+        st.write("")
+        if st.button(
+            f"🗑 Xóa {n_selected}",
+            use_container_width=True,
+            help="Xóa cấu kiện khỏi DB (cascade xóa luôn inspection). KHÔNG hoàn tác được.",
+        ):
+            # Confirm 2 lần qua session_state
+            st.session_state["bulk_delete_confirm"] = True
+
+    # Confirm dialog xóa
+    if st.session_state.get("bulk_delete_confirm"):
+        st.error(
+            f"⚠️ **XÁC NHẬN XÓA {n_selected} CẤU KIỆN?** "
+            f"Hành động này KHÔNG hoàn tác được. Inspection liên quan cũng bị xóa."
+            f"⚠️ **XÁC NHẬN XÓA {n_selected} CẤU KIỆN?** "
+            f"Hành động này KHÔNG hoàn tác được. Inspection liên quan cũng bị xóa."
+        )
+        confirm_col1, confirm_col2, _ = st.columns([2, 2, 4])
+        with confirm_col1:
+            if st.button("✅ Xác nhận XÓA", type="primary", use_container_width=True):
+                user = st.session_state[S_CURRENT_USER]
+                placeholders = ",".join("?" * len(selected_ids))
+                db.conn.execute(
+                    f"DELETE FROM components WHERE id IN ({placeholders})",
+                    selected_ids,
+                )
+                db.conn.commit()
+                db.log(user, "BULK_DELETE", "component", None,
+                       f"deleted={n_selected}, ids={selected_ids[:10]}")
+                st.success(f"Đã xóa {n_selected} cấu kiện.")
+                st.session_state.pop("bulk_delete_confirm", None)
+                st.session_state.pop(SNAP_KEY, None)
+                st.rerun()
+        with confirm_col2:
+            if st.button("❌ Hủy", use_container_width=True):
+                st.session_state.pop("bulk_delete_confirm", None)
+                st.rerun()
+
+    st.write("")
 
 snapshot = st.session_state[SNAP_KEY]
 edited_indexed = edited.set_index("id")
@@ -251,10 +362,7 @@ if save_btn and changes:
 st.divider()
 exp_col1, exp_col2, exp_col3, _ = st.columns([2, 2, 3, 3])
 with exp_col1:
-    csv_data = edited.drop(columns=["id"]).to_csv(index=False).encode("utf-8-sig")
-exp_col1, exp_col2, exp_col3, _ = st.columns([2, 2, 3, 3])
-with exp_col1:
-    csv_data = edited.drop(columns=["id"]).to_csv(index=False).encode("utf-8-sig")
+    csv_data = edited.drop(columns=["id", "✓"]).to_csv(index=False).encode("utf-8-sig")
     st.download_button("📥 Tải CSV", csv_data,
                        file_name=f"cau_kien_{proj['code']}.csv",
                        mime="text/csv", use_container_width=True)
