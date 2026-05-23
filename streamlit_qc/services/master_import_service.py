@@ -7,6 +7,7 @@ mở rộng v2.0:
   - Phát hiện Rev thay đổi → cảnh báo QC.
   - Phát hiện inspection ĐÃ NGHIỆM THU sẵn từ Master (cột RFI_Fit-up /
     RFI_Final Dim) → tự tạo synthetic inspection PASS, không đè bản ghi cũ.
+  - Detect dòng trùng mã trong file Excel + cảnh báo cho user.
 """
 from __future__ import annotations
 
@@ -36,10 +37,13 @@ class MasterImportResult:
     skipped: int = 0
     rev_changed: list = field(default_factory=list)
     # === Inspection đã có sẵn từ master ===
-    fitup_seeded: int = 0   # số FUR PASS tự tạo từ cột RFI_Fit-up
-    final_seeded: int = 0   # số DGRP PASS tự tạo từ cột RFI_Final
-    fitup_skipped_exist: int = 0  # đã có FUR rồi → không tạo trùng
-    final_skipped_exist: int = 0  # đã có DGRP rồi → không tạo trùng
+    fitup_seeded: int = 0
+    final_seeded: int = 0
+    fitup_skipped_exist: int = 0
+    final_skipped_exist: int = 0
+    # === Cảnh báo dòng trùng mã trong file gốc ===
+    duplicate_rows: int = 0
+    duplicate_codes: list = field(default_factory=list)
 
 
 def _existing_inspection_types(db: DB, cid: int) -> set[str]:
@@ -52,10 +56,7 @@ def _existing_inspection_types(db: DB, cid: int) -> set[str]:
 
 
 def _get_master_inspection(db: DB, cid: int, itype: str) -> dict | None:
-    """
-    Lấy inspection MASTER-source (từ Master import) gần nhất cho component + type.
-    Trả về dict {id, date, rfi} hoặc None nếu chưa có.
-    """
+    """Lấy inspection MASTER-source gần nhất cho component + type."""
     row = db.conn.execute(
         """SELECT id, inspection_date, rfi_no FROM inspections
            WHERE component_id=? AND inspection_type=? AND source_file='MASTER'
@@ -84,46 +85,29 @@ def import_master(
     header_row: int,
     user_name: str,
 ) -> MasterImportResult:
-    """
-    Import master list vào DB.
-
-    Nếu mapping có chứa `rfi_fitup_done` / `rfi_final_done` → các cấu kiện
-    đã có số phiếu RFI trong master sẽ được tự động tạo 1 inspection PASS
-    tương ứng (FUR cho Fit-up, DGRP cho Final). Logic chống trùng:
-    component nào đã có inspection cùng loại trong DB → bỏ qua, không tạo
-    thêm.
-
-    Args:
-        db: DB instance.
-        pid: ID dự án.
-        df: DataFrame đã đọc sẵn (đã có header đúng).
-        mapping: {field: column_name_excel}, bắt buộc có key 'code'.
-        sheet_name: Tên sheet (để lưu lại cho mapping).
-        header_row: Index dòng tiêu đề (để lưu lại).
-        user_name: Tên QC để ghi audit_log.
-
-    Returns:
-        MasterImportResult với số liệu chi tiết.
-
-    Raises:
-        ValueError: Nếu mapping không có 'code'.
-    """
+    """Import master list vào DB."""
     if "code" not in mapping or not mapping["code"]:
         raise ValueError("Mapping bắt buộc phải có trường 'code'.")
 
-    # Lưu mapping vào DB để dùng lại lần sau
     db.save_mapping(pid, "MASTER", mapping, header_row=header_row, sheet_name=sheet_name)
-
     result = MasterImportResult(total_rows=len(df))
 
-    # Có map cột RFI đã NT không?
+    # === Detect dòng trùng mã trong file Excel ===
+    code_col = mapping["code"]
+    if code_col in df.columns:
+        dup_series = df[df[code_col].duplicated(keep=False)][code_col].value_counts()
+        if len(dup_series) > 0:
+            result.duplicate_rows = int((dup_series - 1).sum())
+            result.duplicate_codes = [
+                {"code": str(c), "count": int(v)}
+                for c, v in dup_series.head(10).items()
+            ]
+
     has_fitup_col = bool(mapping.get("rfi_fitup_done"))
     has_final_col = bool(mapping.get("rfi_final_done"))
 
     for _, row in df.iterrows():
-        # Build data dict theo mapping (LOẠI BỎ 4 trường inspection-done)
         data = {}
-        # Tách riêng 4 giá trị inspection-done để xử lý sau
         rfi_fitup_val = None
         date_fitup_val = None
         rfi_final_val = None
@@ -136,7 +120,6 @@ def import_master(
             if pd.isna(v):
                 v = None
 
-            # Inspection-done → tách riêng, KHÔNG ghi vào data_json
             if fld == "rfi_fitup_done":
                 rfi_fitup_val = v
                 continue
@@ -150,18 +133,16 @@ def import_master(
                 date_final_val = excel_date_to_iso(v)
                 continue
 
-            # plan_date: Excel serial → ISO date string
             if fld == "plan_date":
                 v = excel_date_to_iso(v)
             data[fld] = v
 
-        # Validate code
         code = str(data.get("code") or "").strip()
         if not code or code.lower() == "nan":
             result.skipped += 1
             continue
 
-        # CHECK REV CHANGE — trước khi upsert
+        # CHECK REV CHANGE
         existing = db.find_component(pid, code)
         new_rev = str(data.get("rev_no") or "").strip()
         if existing and new_rev:
@@ -183,7 +164,6 @@ def import_master(
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        # Upsert component
         cid, is_new = db.upsert_component(pid, code, data)
         result.written += 1
         if is_new:
@@ -192,40 +172,33 @@ def import_master(
             result.updated += 1
 
         # === Tạo/cập nhật inspection PASS từ cột RFI có sẵn ===
-        # NEW LOGIC: nếu đã có MASTER-source inspection → UPDATE date/rfi nếu khác,
-        # KHÔNG skip như trước. Inspection từ DAILY source sẽ KHÔNG bị đụng vào.
         if has_fitup_col or has_final_col:
 
-            # FUR (Fit-up) — có RFI = đã nghiệm thu
             if has_fitup_col:
                 rfi_str = str(rfi_fitup_val or "").strip()
                 if rfi_str and rfi_str.lower() != "nan":
                     new_date = date_fitup_val or ""
                     existing_master = _get_master_inspection(db, cid, "FUR") if not is_new else None
                     if existing_master:
-                        # Đã có MASTER inspection — update nếu date/rfi đổi
                         if existing_master["date"] != new_date or existing_master["rfi"] != rfi_str:
                             _update_inspection(db, existing_master["id"], new_date, rfi_str)
-                            result.fitup_seeded += 1  # tính như seeded vì có cập nhật
+                            result.fitup_seeded += 1
                         else:
                             result.fitup_skipped_exist += 1
                     else:
-                        # Chưa có MASTER inspection — check xem có DAILY không
                         existing_types = _existing_inspection_types(db, cid)
                         if "FUR" in existing_types:
-                            # Đã có FUR từ DAILY → tôn trọng, không tạo trùng từ Master
                             result.fitup_skipped_exist += 1
                         else:
                             db.add_inspection(
                                 pid=pid, cid=cid, itype="FUR",
                                 idate=new_date, inspector=user_name, result="PASS",
                                 rep="", rfi=rfi_str,
-                                note="Import từ Master (RFI_Fit-up có sẵn)",
+                                note="Import tu Master (RFI Fit-up co san)",
                                 src="MASTER",
                             )
                             result.fitup_seeded += 1
 
-            # DGRP (Final) — có RFI = đã nghiệm thu → ACCEPTED
             if has_final_col:
                 rfi_str = str(rfi_final_val or "").strip()
                 if rfi_str and rfi_str.lower() != "nan":
@@ -246,12 +219,11 @@ def import_master(
                                 pid=pid, cid=cid, itype="DGRP",
                                 idate=new_date, inspector=user_name, result="PASS",
                                 rep="", rfi=rfi_str,
-                                note="Import từ Master (RFI_Final có sẵn)",
+                                note="Import tu Master (RFI Final co san)",
                                 src="MASTER",
                             )
                             result.final_seeded += 1
 
-    # Commit + audit log
     db.conn.commit()
     db.log(
         user_name,
@@ -260,19 +232,14 @@ def import_master(
         pid,
         f"rows={result.total_rows}, written={result.written}, "
         f"new={result.new}, upd={result.updated}, skipped={result.skipped}, "
-        f"fitup_seeded={result.fitup_seeded}, final_seeded={result.final_seeded}",
+        f"fitup_seeded={result.fitup_seeded}, final_seeded={result.final_seeded}, "
+        f"dup_rows={result.duplicate_rows}",
     )
-
     return result
 
 
 def clear_components(db: DB, pid: int, user_name: str) -> int:
-    """
-    Xoá toàn bộ cấu kiện của 1 dự án (cascade xoá inspections luôn).
-
-    Returns:
-        Số cấu kiện đã xoá.
-    """
+    """Xoá toàn bộ cấu kiện của 1 dự án (cascade xoá inspections luôn)."""
     count = db.conn.execute(
         "SELECT COUNT(*) c FROM components WHERE project_id=?",
         (pid,),

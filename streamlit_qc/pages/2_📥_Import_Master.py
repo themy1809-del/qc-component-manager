@@ -288,15 +288,31 @@ if df is not None and "code" in mapping:
     fitup_emoji = "✅" if has_date_fitup else "⚠️"
     final_emoji = "✅" if has_date_final else "⚠️"
 
+    # Tìm dòng trùng mã code trong file Excel
+    n_duplicates_total = 0
+    dup_codes_info = []
+    if code_col in df.columns:
+        dup_series = df[df[code_col].duplicated(keep=False)][code_col].value_counts()
+        if len(dup_series) > 0:
+            n_duplicates_total = int((dup_series - 1).sum())  # số dòng dư (mỗi mã unique tính 1 dòng "gốc")
+            dup_codes_info = [
+                {"code": str(c), "count": int(v)}
+                for c, v in dup_series.head(10).items()
+            ]
+
     with st.expander("📋 Preview — Kiểm tra mapping trước khi import", expanded=True):
         pcol1, pcol2 = st.columns(2)
         with pcol1:
+            dup_line = (
+                f"\n- ⚠️ Dòng trùng mã trong file: **{n_duplicates_total:,}** "
+                f"(sẽ merge thành 1 record)"
+            ) if n_duplicates_total > 0 else ""
             st.markdown(f"""
 **📊 Thống kê file:**
 - Tổng dòng Excel: **{len(df):,}**
 - Mã unique theo cột `code`: **{n_unique_code:,}** {code_check_emoji}
 - Cấu kiện sẽ có Fit-up: **{n_rfi_fitup:,}** {fitup_emoji} ngày
-- Cấu kiện sẽ có Final: **{n_rfi_final:,}** {final_emoji} ngày
+- Cấu kiện sẽ có Final: **{n_rfi_final:,}** {final_emoji} ngày{dup_line}
 """)
         with pcol2:
             st.markdown(f"""
@@ -319,6 +335,25 @@ if df is not None and "code" in mapping:
             st.warning("⚠️ Có RFI Fit-up nhưng KHÔNG có Date Fit-up → ngày sẽ rỗng. Check mapping `date_fitup_done`.")
         if not has_date_final and mapping.get("rfi_final_done"):
             st.warning("⚠️ Có RFI Final nhưng KHÔNG có Date Final → ngày sẽ rỗng. Check mapping `date_final_done`.")
+
+        # Cảnh báo dòng trùng mã trong file gốc
+        if n_duplicates_total > 0:
+            st.warning(
+                f"⚠️ **File có {n_duplicates_total:,} dòng trùng mã** "
+                f"({len(dup_codes_info)} mã bị lặp). "
+                f"App sẽ tự **merge các dòng trùng** thành 1 record (giữ field cuối cùng). "
+                f"Nên báo team làm file kiểm tra lại."
+            )
+            # Bảng danh sách mã trùng
+            import pandas as pd_local
+            dup_df = pd_local.DataFrame(dup_codes_info)
+            dup_df.columns = ["Mã cấu kiện", "Số lần xuất hiện"]
+            st.dataframe(
+                dup_df, hide_index=True, use_container_width=False,
+                column_config={
+                    "Số lần xuất hiện": st.column_config.NumberColumn(format="%d"),
+                },
+            )
 
 st.write("")
 
@@ -424,6 +459,32 @@ if do_import and df is not None and "code" in mapping:
             f"Tổng DB: **{total_in_db:,}**"
         )
 
+        # ⚠ Cảnh báo dòng trùng mã trong file Excel gốc
+        if result.duplicate_rows > 0:
+            import pandas as _pd
+            st.warning(
+                f"⚠️ **File Excel gốc có {result.duplicate_rows:,} dòng trùng mã** "
+                f"({len(result.duplicate_codes)} mã bị lặp). "
+                f"App đã tự **merge các dòng trùng** thành 1 record (giữ field cuối cùng). "
+                f"Nên báo team làm file Excel kiểm tra lại."
+            )
+            with st.expander(f"Xem {len(result.duplicate_codes)} mã trùng", expanded=False):
+                dup_df = _pd.DataFrame(result.duplicate_codes)
+                dup_df.columns = ["Mã cấu kiện", "Số lần xuất hiện trong file"]
+                st.dataframe(
+                    dup_df, hide_index=True, use_container_width=True,
+                    column_config={
+                        "Số lần xuất hiện trong file": st.column_config.NumberColumn(format="%d"),
+                    },
+                )
+                csv_dup = dup_df.to_csv(index=False).encode("utf-8-sig")
+                st.download_button(
+                    "📥 Tải danh sách mã trùng (CSV)",
+                    csv_dup,
+                    file_name=f"duplicate_codes_{proj['code']}.csv",
+                    mime="text/csv",
+                )
+
         # 🎯 Stats inspection có sẵn từ Master (RFI Fit-up + RFI Final)
         if (result.fitup_seeded or result.final_seeded or
                 result.fitup_skipped_exist or result.final_skipped_exist):
@@ -453,7 +514,6 @@ if do_import and df is not None and "code" in mapping:
                     "new_rev": "Rev mới",
                 })
                 st.dataframe(df_rev, hide_index=True, use_container_width=True, height=300)
-                # Cho phép tải CSV để truy xuất
                 csv_data = df_rev.to_csv(index=False).encode("utf-8-sig")
                 st.download_button(
                     "📥 Tải danh sách CSV",
@@ -470,29 +530,3 @@ if do_import and df is not None and "code" in mapping:
             st.code(traceback.format_exc())
 
 st.divider()
-with st.expander("Khu vực nguy hiểm — Xoá toàn bộ cấu kiện", expanded=False):
-    n_current = db.conn.execute(
-        "SELECT COUNT(*) c FROM components WHERE project_id=?", (pid,)
-    ).fetchone()["c"]
-    st.warning(
-        f"Hành động này sẽ xoá TOÀN BỘ **{n_current:,}** cấu kiện của dự án [{proj['code']}]. "
-        f"Không hoàn tác được."
-    )
-    if st.button("🧹 Xoá toàn bộ cấu kiện", key="clear_confirm"):
-        st.session_state["_confirm_clear"] = True
-
-    if st.session_state.get("_confirm_clear"):
-        st.error(f"**Xác nhận xoá toàn bộ cấu kiện của [{proj['code']}]?**")
-        cc1, cc2 = st.columns(2)
-        with cc1:
-            if st.button("⚠ Xác nhận xoá", type="primary"):
-                deleted = master_import_service.clear_components(
-                    db, pid, st.session_state[S_CURRENT_USER]
-                )
-                st.session_state.pop("_confirm_clear", None)
-                st.success(f"Đã xoá {deleted:,} cấu kiện.")
-                st.rerun()
-        with cc2:
-            if st.button("Huỷ"):
-                st.session_state.pop("_confirm_clear", None)
-                st.rerun()
