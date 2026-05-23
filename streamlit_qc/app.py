@@ -140,6 +140,24 @@ emit("""
 .nav:hover {border-color: #D4A744; box-shadow: 0 4px 12px rgba(15,30,64,.08); transform: translateY(-2px);}
 .nav .ic {font-size: 18px;}
 .nav .lbl {font-weight: 700; color: #0F1E40; font-size: 11px;}
+
+/* Multi-project mini card */
+.proj-mini {
+  background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+  padding: 10px 12px; transition: all .15s ease;
+  height: 100%; display: flex; flex-direction: column; gap: 4px;
+  position: relative; overflow: hidden;
+}
+.proj-mini:hover {border-color:#D4A744; box-shadow:0 4px 12px rgba(15,30,64,.08); transform:translateY(-2px);}
+.proj-mini.active {border:2px solid #D4A744; background:#fffdf7;}
+.proj-mini .pm-strip {position:absolute; top:0; left:0; right:0; height:3px;}
+.proj-mini .pm-code {font-size:11px; color:#FCE7A1; background:#0F1E40; padding:2px 8px; border-radius:4px; font-weight:700; align-self:flex-start;}
+.proj-mini .pm-name {font-size:12px; font-weight:600; color:#0F172A; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:4px;}
+.proj-mini .pm-pct {font-size:22px; font-weight:800; line-height:1; margin-top:2px;}
+.proj-mini .pm-bar {height:5px; background:#f1f5f9; border-radius:4px; overflow:hidden;}
+.proj-mini .pm-bar-fill {height:100%; border-radius:4px;}
+.proj-mini .pm-stats {display:flex; justify-content:space-between; font-size:10px; color:#64748B; margin-top:4px;}
+.proj-mini .pm-stats b {color:#0F172A;}
 </style>
 """)
 
@@ -212,6 +230,53 @@ def project_workshops(_db, pid: int) -> dict:
     }
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def all_projects_summary(_db) -> list[dict]:
+    """Lấy KPI tóm tắt cho TẤT CẢ dự án — dùng cho multi-project overview."""
+    rows = _db.conn.execute(
+        """
+        SELECT p.id, p.code, p.name, p.location, p.owner,
+               c.status, COUNT(c.id) c_count
+        FROM projects p
+        LEFT JOIN components c ON c.project_id = p.id
+        GROUP BY p.id, p.code, p.name, p.location, p.owner, c.status
+        ORDER BY p.id
+        """
+    ).fetchall()
+    proj_map: dict[int, dict] = {}
+    for r in rows:
+        pid = r["id"]
+        if pid not in proj_map:
+            proj_map[pid] = {
+                "pid": pid, "code": r["code"], "name": r["name"],
+                "location": r["location"] or "", "owner": r["owner"] or "",
+                "total": 0, "accepted": 0, "passed": 0,
+                "pending": 0, "in_progress": 0, "failed": 0,
+            }
+        status = r["status"]
+        cnt = r["c_count"] or 0
+        if status is None:
+            continue
+        proj_map[pid]["total"] += cnt
+        if status == STATUS_ACCEPTED:
+            proj_map[pid]["accepted"] = cnt
+        elif status == STATUS_PASSED:
+            proj_map[pid]["passed"] = cnt
+        elif status == STATUS_PENDING:
+            proj_map[pid]["pending"] = cnt
+        elif status == STATUS_IN_PROGRESS:
+            proj_map[pid]["in_progress"] = cnt
+        elif status == STATUS_FAILED:
+            proj_map[pid]["failed"] = cnt
+    out = []
+    for p in proj_map.values():
+        done = p["passed"] + p["accepted"]
+        p["pct"] = round(done * 100 / p["total"], 1) if p["total"] else 0.0
+        p["backlog"] = p["pending"] + p["in_progress"]
+        out.append(p)
+    return out
+
+
 @st.cache_data(ttl=60, show_spinner=False)
 def workshop_activity(_db, pid: int, workshop: str, limit: int = 10) -> list[dict]:
     """Filter workshop trong SQL — chỉ fetch số dòng cần thiết."""
@@ -249,7 +314,77 @@ def pct_color(p: float) -> str:
 
 
 # ============================================================
-# 1. HERO — 1 dòng compact
+# 0. TỔNG QUAN ĐA DỰ ÁN — hiện trước hero (nếu > 1 dự án)
+# ============================================================
+all_projects_data = all_projects_summary(db)
+n_total_projects = len(all_projects_data)
+
+if n_total_projects > 1:
+    sum_total_all = sum(p["total"] for p in all_projects_data)
+    sum_done_all = sum(p["passed"] + p["accepted"] for p in all_projects_data)
+    overall_pct = round(sum_done_all * 100 / sum_total_all, 1) if sum_total_all else 0.0
+
+    emit(f"""
+<div class="sec">📊 Tổng quan {n_total_projects} dự án
+<span class="sub">· tổng {sum_total_all:,} cấu kiện · <b style="color:#0F766E;">{overall_pct}%</b> hoàn thành</span>
+</div>
+""")
+
+    # Sort theo % giảm dần để dễ thấy dự án nào hot
+    projects_sorted = sorted(all_projects_data, key=lambda x: x["pct"], reverse=True)
+
+    # Grid mini-card 5 cột mỗi hàng
+    PROJ_PER_ROW = 5
+    for row_start in range(0, len(projects_sorted), PROJ_PER_ROW):
+        cols = st.columns(PROJ_PER_ROW)
+        for i, col in enumerate(cols):
+            idx = row_start + i
+            if idx >= len(projects_sorted):
+                break
+            p = projects_sorted[idx]
+            with col:
+                color = pct_color(p["pct"])
+                is_active = (p["pid"] == active_pid)
+                active_cls = " active" if is_active else ""
+                fail_html = (
+                    f'<span style="color:#DC2626;">⚠ {p["failed"]}</span>'
+                    if p["failed"] > 0 else ""
+                )
+                emit(
+                    f'<div class="proj-mini{active_cls}">'
+                    f'<div class="pm-strip" style="background:{color};"></div>'
+                    f'<div class="pm-code">{p["code"]}</div>'
+                    f'<div class="pm-name">{p["name"]}</div>'
+                    f'<div class="pm-pct" style="color:{color};">{p["pct"]}%</div>'
+                    f'<div class="pm-bar"><div class="pm-bar-fill" style="width:{min(p["pct"],100)}%;background:{color};"></div></div>'
+                    f'<div class="pm-stats">'
+                    f'<span><b>{p["total"]:,}</b> CK</span>'
+                    f'<span>✅ <b>{p["accepted"]:,}</b></span>'
+                    f'<span>⏳ <b style="color:#D97706;">{p["backlog"]:,}</b></span>'
+                    f'{fail_html}'
+                    f'</div></div>'
+                )
+                # Nút switch sang dự án này
+                btn_type = "primary" if is_active else "secondary"
+                if st.button(
+                    "Đang xem" if is_active else "🔀 Chuyển",
+                    key=f"switch_proj_{p['pid']}",
+                    use_container_width=True,
+                    type=btn_type,
+                    disabled=is_active,
+                ):
+                    from streamlit_qc.core.state import set_current_project_id
+                    set_current_project_id(p["pid"])
+                    # Reset workshop selection vì sang dự án khác
+                    st.session_state.pop("selected_workshop", None)
+                    st.rerun()
+
+    st.write("")
+    st.divider()
+
+
+# ============================================================
+# 1. HERO — 1 dòng compact (dự án ĐANG XEM)
 # ============================================================
 emit(f"""
 <div class="hero">
