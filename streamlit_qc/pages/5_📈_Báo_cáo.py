@@ -45,6 +45,58 @@ if pid is None or proj is None:
 
 project_info_strip(proj)
 
+# ============================================================
+# 📊 EXCEL BÁO CÁO TỔNG HỢP PRO — 6 sheet đa chiều
+# ============================================================
+st.markdown(
+    '<div style="background:linear-gradient(135deg,#0F1E40,#1E3A8A);'
+    'padding:14px 18px;border-radius:10px;color:#fff;margin-bottom:10px;">'
+    '<div style="font-size:14px;font-weight:700;">📊 Báo cáo Excel chuyên nghiệp</div>'
+    '<div style="font-size:12px;color:rgba(255,255,255,0.78);margin-top:4px;">'
+    '6 sheet: Tổng quan · Cấu kiện · Overdue · FAIL · Inspector · Inspections — Format đẹp cho khách/sếp'
+    '</div></div>',
+    unsafe_allow_html=True,
+)
+
+ec1, ec2, ec3 = st.columns([2, 2, 3])
+with ec1:
+    overdue_threshold_export = st.number_input(
+        "Ngưỡng overdue (ngày)",
+        min_value=1, max_value=90, value=7,
+        help="Số ngày sau Fit-up coi là overdue trong sheet Overdue.",
+    )
+with ec2:
+    st.write("")
+    if st.button("📊 Tạo báo cáo Excel PRO", type="primary", use_container_width=True):
+        try:
+            with st.spinner("Đang tạo Excel 6 sheet..."):
+                excel_bytes = report_service.export_to_excel_pro(
+                    db, pid, proj["code"], proj["name"],
+                    overdue_threshold=int(overdue_threshold_export),
+                )
+            st.session_state["_excel_pro_bytes"] = excel_bytes
+            st.session_state["_excel_pro_name"] = (
+                f"BaoCao_PRO_{proj['code']}_{dt.date.today():%Y%m%d}.xlsx"
+            )
+            st.success("✅ Đã tạo báo cáo!")
+        except Exception as e:
+            st.error(f"Lỗi: {e}")
+            import traceback
+            with st.expander("Chi tiết"):
+                st.code(traceback.format_exc())
+with ec3:
+    if "_excel_pro_bytes" in st.session_state:
+        st.write("")
+        st.download_button(
+            f"💾 Tải file {st.session_state.get('_excel_pro_name', 'BaoCao.xlsx')}",
+            st.session_state["_excel_pro_bytes"],
+            file_name=st.session_state["_excel_pro_name"],
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+st.divider()
+
 min_d, max_d = report_service.get_inspection_date_range(db, pid)
 
 if min_d is None:
