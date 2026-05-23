@@ -185,6 +185,7 @@ TPL_OPTIONS = [
     ("viola", "🏭 Form VIOLA — Structural Steel"),
     ("pvf", "🏢 Form PVF Hưng Yên"),
     ("phuquoc", "✈️ Form Phú Quốc (có RFI Fit-up + Final sẵn)"),
+    ("bison", "🏗️ Form Bison Generation Station (chỉ Final)"),
 ]
 for tname in sorted(templates_user.keys()):
     TPL_OPTIONS.append((f"user::{tname}", f"📂 {tname} (lưu sẵn)"))
@@ -240,6 +241,18 @@ with c_apply:
                 st.session_state[K_HEADER_ROW] = mapping_service.PHUQUOC_DEFAULT_HEADER_ROW
                 st.session_state[K_MAPPING] = mapping_service.apply_hardcoded_mapping(
                     mapping_service.PHUQUOC_MAPPING, headers_new)
+            elif tpl_key == "bison":
+                sheets_local = st.session_state.get(K_SHEETS, [])
+                sheet_use = mapping_service.BISON_DEFAULT_SHEET if mapping_service.BISON_DEFAULT_SHEET in sheets_local else sheet
+                df_new = read_excel_any(st.session_state[K_UPLOAD], sheet_name=sheet_use,
+                                       header=mapping_service.BISON_DEFAULT_HEADER_ROW)
+                headers_new = [str(c) for c in df_new.columns]
+                st.session_state[K_DF] = df_new
+                st.session_state[K_HEADERS] = headers_new
+                st.session_state[K_SHEET] = sheet_use
+                st.session_state[K_HEADER_ROW] = mapping_service.BISON_DEFAULT_HEADER_ROW
+                st.session_state[K_MAPPING] = mapping_service.apply_hardcoded_mapping(
+                    mapping_service.BISON_MAPPING, headers_new)
             elif tpl_key.startswith("user::"):
                 tname = tpl_key.split("::", 1)[1]
                 matched, hr, sn = mapping_service.apply_template(tname, headers)

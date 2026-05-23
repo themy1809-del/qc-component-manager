@@ -100,6 +100,34 @@ PHUQUOC_DEFAULT_HEADER_ROW = 7  # dòng 8 trong Excel (0-indexed = 7)
 PHUQUOC_DEFAULT_SHEET = "CHECKLIST"
 
 
+# === FORM BISON (Bison Generation Station - Steel Structure) ===
+# File CHECK_LIST có header 2 dòng (row 2 main + row 3 sub-header).
+# Bison KHÔNG có cột Fit-up riêng — chỉ có FINAL DIMENSION + NDT.
+# Cột "Unnamed: 25" là sub-header "Date" của FINAL DIMENSION.
+BISON_MAPPING: dict[str, str] = {
+    "code": "Member Punch No",
+    "name": "Tên bản vẽ",
+    "member_no": "Số street + Tên bản vẽ",
+    "rev_no": "Rev SPM",
+    "type": "Type",
+    "material": "Material",
+    "section": "Section",
+    "length_mm": "Length [mm]",
+    "weight_kg": "Weight [kg]",
+    "workshop": "After Cutting Plan Workshop",
+    "phase": "Note5\nMilestone",
+    "street": "Số street",
+    "guid": "GUID",
+    "plan_date": "After Cutting Plan Date",
+    # === Cột inspection đã NT ===
+    # Bison không có Fit-up riêng → chỉ map Final
+    "rfi_final_done": "FINAL DIMENSION - VISUAL - NDT",
+    "date_final_done": "Unnamed: 25",
+}
+BISON_DEFAULT_HEADER_ROW = 2  # dòng 3 trong Excel (0-indexed = 2)
+BISON_DEFAULT_SHEET = "CHECK_LIST"
+
+
 def apply_hardcoded_mapping(
     template: dict[str, str],
     available_headers: list[str],
