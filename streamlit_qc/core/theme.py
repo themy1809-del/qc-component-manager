@@ -503,6 +503,99 @@ hr {{
 [data-testid="stIconMaterial"]:not(:has(svg)) {{
     font-size: 0 !important;
 }}
+
+/* ====================================================================
+   📱 MOBILE RESPONSIVE — màn hình < 768px
+==================================================================== */
+@media (max-width: 768px) {{
+    .block-container {{
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+        padding-top: 0.5rem !important;
+        padding-bottom: 2rem !important;
+    }}
+    h1 {{ font-size: 1.4rem !important; }}
+    h2 {{ font-size: 1.2rem !important; }}
+    h3 {{ font-size: 1.05rem !important; }}
+
+    [data-testid="stHorizontalBlock"] {{
+        flex-direction: column !important;
+        gap: 8px !important;
+    }}
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] {{
+        width: 100% !important;
+        min-width: 100% !important;
+        flex: 1 0 100% !important;
+    }}
+
+    .stButton > button,
+    .stDownloadButton > button {{
+        min-height: 44px !important;
+        font-size: 13px !important;
+        padding: 8px 12px !important;
+    }}
+
+    .stSelectbox > div > div,
+    .stTextInput > div > div > input,
+    .stNumberInput > div > div > input {{
+        min-height: 44px !important;
+        font-size: 14px !important;
+    }}
+
+    [data-testid="stDataFrame"] {{
+        font-size: 11px !important;
+    }}
+
+    .hero, .exec-hero, .cp-hero {{
+        padding: 12px 14px !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        text-align: left !important;
+    }}
+    .hero .pct, .exec-hero .pct-big, .cp-hero .pct {{
+        font-size: 28px !important;
+    }}
+    .hero .name, .cp-hero .name {{
+        font-size: 16px !important;
+    }}
+
+    .mini-kpi, .kpi-card {{
+        height: auto !important;
+        min-height: 80px !important;
+        padding: 10px 12px !important;
+    }}
+    .mini-kpi .mk-value, .kpi-card .value {{
+        font-size: 22px !important;
+    }}
+
+    .ws, .proj-mini {{
+        min-height: 70px !important;
+        padding: 10px 12px !important;
+    }}
+    .ws .pc {{ font-size: 20px !important; }}
+    .ws .nm {{ font-size: 15px !important; }}
+
+    .ws-detail, .panel, .alert-box {{
+        box-shadow: none !important;
+        padding: 12px !important;
+    }}
+
+    .section-title .sub, .sec .sub {{
+        display: none !important;
+    }}
+}}
+
+@media (max-width: 480px) {{
+    .block-container {{
+        padding-left: 0.3rem !important;
+        padding-right: 0.3rem !important;
+    }}
+    h1 {{ font-size: 1.2rem !important; }}
+    h2 {{ font-size: 1.05rem !important; }}
+    .hero .pct, .cp-hero .pct {{
+        font-size: 24px !important;
+    }}
+}}
 </style>
 """
 

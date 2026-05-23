@@ -220,6 +220,14 @@ class DB:
                 ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS comments (
+                id SERIAL PRIMARY KEY,
+                component_id INTEGER NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+                user_name TEXT,
+                text TEXT NOT NULL,
+                ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_components_code
                 ON components(project_id, code);
             CREATE INDEX IF NOT EXISTS idx_inspections_comp
@@ -228,6 +236,8 @@ class DB:
                 ON inspections(project_id);
             CREATE INDEX IF NOT EXISTS idx_audit_ts
                 ON audit_log(ts DESC);
+            CREATE INDEX IF NOT EXISTS idx_comments_comp
+                ON comments(component_id, ts DESC);
             """
         else:
             schema = """
@@ -290,6 +300,15 @@ class DB:
                 ts TEXT DEFAULT CURRENT_TIMESTAMP
             );
 
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                component_id INTEGER NOT NULL,
+                user_name TEXT,
+                text TEXT NOT NULL,
+                ts TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_components_code
                 ON components(project_id, code);
             CREATE INDEX IF NOT EXISTS idx_inspections_comp
@@ -298,6 +317,8 @@ class DB:
                 ON inspections(project_id);
             CREATE INDEX IF NOT EXISTS idx_audit_ts
                 ON audit_log(ts DESC);
+            CREATE INDEX IF NOT EXISTS idx_comments_comp
+                ON comments(component_id, ts DESC);
             """
         self.conn.executescript(schema)
         self.conn.commit()

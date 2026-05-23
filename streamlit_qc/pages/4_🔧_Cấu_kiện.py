@@ -222,6 +222,57 @@ edited = st.data_editor(
 selected_ids = edited[edited["✓"] == True]["id"].tolist()
 n_selected = len(selected_ids)
 
+# ============================================================
+# 💬 COMMENT PANEL — hiện khi chọn ĐÚNG 1 cấu kiện
+# ============================================================
+if n_selected == 1:
+    from streamlit_qc.services import comment_service
+    single_cid = int(selected_ids[0])
+    single_row = edited[edited["id"] == single_cid].iloc[0]
+    single_code = single_row["Tên cấu kiện"]
+
+    with st.expander(f"💬 Comment cho cấu kiện **{single_code}**", expanded=True):
+        # Form thêm comment
+        new_comment = st.text_area(
+            "Thêm comment", placeholder="Ghi chú QC, mô tả vấn đề, tag đồng nghiệp...",
+            height=80, key=f"new_comment_{single_cid}",
+        )
+        cc1, cc2, _ = st.columns([2, 2, 4])
+        with cc1:
+            if st.button("💾 Lưu comment", type="primary", use_container_width=True,
+                         disabled=(not new_comment.strip())):
+                try:
+                    user = st.session_state[S_CURRENT_USER]
+                    comment_service.add_comment(db, single_cid, user, new_comment.strip())
+                    st.success("Đã lưu comment")
+                    # Clear via counter pattern
+                    if f"new_comment_counter_{single_cid}" not in st.session_state:
+                        st.session_state[f"new_comment_counter_{single_cid}"] = 0
+                    st.session_state[f"new_comment_counter_{single_cid}"] += 1
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Lỗi: {e}")
+
+        # Hiển thị comment history
+        comments = comment_service.list_comments(db, single_cid, limit=50)
+        if comments:
+            st.markdown(f"**{len(comments)} comment(s):**")
+            for c in comments:
+                ts = str(c.get("ts", ""))[:16].replace("T", " ")
+                user = c.get("user_name") or "anonymous"
+                st.markdown(
+                    f"<div style='background:#f8fafc;border-left:3px solid #D4A744;"
+                    f"padding:8px 12px;margin:6px 0;border-radius:6px;font-size:13px;'>"
+                    f"<div style='color:#64748b;font-size:11px;margin-bottom:4px;'>"
+                    f"<b style='color:#0F1E40;'>{user}</b> · {ts}"
+                    f"</div>"
+                    f"<div style='color:#0F172A;white-space:pre-wrap;'>{c['text']}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.caption("_Chưa có comment nào._")
+
 if n_selected > 0:
     st.markdown(
         f'<div style="background:#fffdf7;border:2px solid #D4A744;border-radius:10px;'
@@ -380,7 +431,6 @@ with exp_col2:
 with exp_col3:
     pdf_limit = st.number_input(
         "Giới hạn số cấu kiện / PDF", min_value=1, max_value=200, value=50,
-        help="PDF nhiều cấu kiện sẽ load chậm. Mặc định 50.",
     )
 
 if gen_pdf and accepted_ids:
@@ -404,9 +454,6 @@ if gen_pdf and accepted_ids:
             use_container_width=True,
         )
     except ImportError:
-        st.error("Chưa cài reportlab. Push DEPLOY.bat để Cloud rebuild với reportlab.")
+        st.error("Chưa cài reportlab.")
     except Exception as e:
-        st.error(f"Lỗi tạo PDF: {e}")
-        import traceback
-        with st.expander("Chi tiết lỗi"):
-            st.code(traceback.format_exc())
+        st.error(f"Lỗi: {e}")
