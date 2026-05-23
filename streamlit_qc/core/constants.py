@@ -104,7 +104,9 @@ STATUS_BG: dict[str, str] = {
 # Thứ tự ưu tiên: keyword sớm hơn match trước
 # ====================================================================
 SMART_KEYWORDS: dict[str, list[str]] = {
-    "code":      ["member punch no", "tên cấu kiện", "ten cau kien", "punch no", "item code", "mã chi tiết", "ma chi tiet", "piece mark", "piece id", "unique", "tên hồ sơ"],
+    # "tên hồ sơ" + "tên cấu kiện" đặt LÊN ĐẦU để ưu tiên cột Đại Dũng "Member Punch No\nTên hồ sơ"
+    # so với plain "Member Punch No" (cột gom group, không unique sub-piece).
+    "code":      ["tên hồ sơ", "ten ho so", "tên cấu kiện", "ten cau kien", "member punch no", "punch no", "item code", "mã chi tiết", "ma chi tiet", "piece mark", "piece id", "unique"],
     "member_no": ["member no", "mã cấu kiện", "ma cau kien", "item no", "part no", "mark no"],
     "name":      ["tên hạng mục", "ten hang muc", "drawing", "drawing no", "ten bv", "item name", "tên cấu kiện", "drawing name"],
     "zone":      ["zone", "khu vực", "khu vuc", "area"],
