@@ -71,6 +71,26 @@ if pid is None or proj is None:
 
 project_info_strip(proj)
 
+# ============================================================
+# 🎯 BANNER XÁC NHẬN DỰ ÁN — chống import nhầm
+# ============================================================
+st.markdown(
+    f'<div style="background:linear-gradient(135deg,#0F1E40,#1E3A8A);'
+    f'padding:18px 22px;border-radius:12px;color:#fff;margin:8px 0 12px 0;'
+    f'border-left:6px solid #D4A744;box-shadow:0 4px 14px rgba(15,30,64,0.18);">'
+    f'<div style="font-size:11px;color:#FCE7A1;font-weight:700;'
+    f'letter-spacing:1.5px;text-transform:uppercase;">⚠️ Bạn đang IMPORT vào dự án:</div>'
+    f'<div style="font-size:24px;font-weight:800;margin-top:4px;letter-spacing:-0.5px;">'
+    f'[{proj["code"]}] {proj["name"]}'
+    f'</div>'
+    f'<div style="font-size:12px;color:rgba(255,255,255,0.78);margin-top:4px;">'
+    f'Đảm bảo file Excel anh upload thuộc đúng dự án này. '
+    f'Nếu sai → đổi dự án ở header trên trước khi import.'
+    f'</div>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
+
 K_UPLOAD = "master_upload_filepath"
 K_UPLOAD_NAME = "master_upload_name"
 K_SHEETS = "master_sheets"
@@ -271,11 +291,49 @@ with c_apply:
             st.error(f"Lỗi: {e}")
 
 with c_import:
+    # === Check filename mismatch với project code ===
+    filename = st.session_state.get(K_UPLOAD_NAME, "") or ""
+    filename_upper = filename.upper()
+    proj_code_upper = (proj["code"] or "").upper()
+    proj_name_upper = (proj["name"] or "").upper()
+
+    # Detect các project code khác trong filename
+    KNOWN_PROJECTS = ["VIOLA", "PQA", "PHU QUOC", "PPVF", "PVF", "BISON"]
+    detected_in_filename = []
+    for kp in KNOWN_PROJECTS:
+        if kp in filename_upper:
+            detected_in_filename.append(kp)
+
+    # Heuristic: project code KHỚP nếu xuất hiện trong filename hoặc tên project
+    name_match = bool(
+        proj_code_upper in filename_upper
+        or any(token in filename_upper for token in proj_name_upper.split() if len(token) >= 3)
+    )
+
+    has_other_project = any(
+        kp not in proj_code_upper and kp not in proj_name_upper
+        for kp in detected_in_filename
+    )
+
     do_import = st.button(
         f"▶ Import {len(df):,} cấu kiện vào DB" if df is not None else "▶ Import",
         type="primary", use_container_width=True,
         disabled=("code" not in mapping or df is None),
     )
+
+# === Cảnh báo filename mismatch ===
+if filename and df is not None and "code" in mapping:
+    if has_other_project and not name_match:
+        st.error(
+            f"🚨 **CẢNH BÁO MISMATCH!** Tên file **`{filename}`** "
+            f"chứa từ khoá dự án khác ({', '.join(detected_in_filename)}), "
+            f"nhưng anh đang import vào **[{proj['code']}] {proj['name']}**. "
+            f"**Kiểm tra lại — có thể anh chọn nhầm dự án!**"
+        )
+    elif name_match:
+        st.success(
+            f"✅ Filename khớp với dự án [{proj['code']}] — yên tâm import."
+        )
 
 # Toggle workflow option
 opt_col1, opt_col2 = st.columns([3, 5])
@@ -521,10 +579,9 @@ if do_import and df is not None and "code" in mapping:
             import pandas as _pd
             n_rev = len(result.rev_changed)
             st.warning(
-                f"🔄 **Phát hiện {n_rev} cấu kiện có REVISION THAY ĐỔI** so với master cũ.\n\n"
-                f"Anh cần xem xét: bản vẽ đã update → nên kiểm tra lại Fit-up/Final cho các cấu kiện này."
+                f"🔄 **Phát hiện {n_rev} cấu kiện có REVISION THAY ĐỔI** so với master cũ."
             )
-            with st.expander(f"Xem chi tiết {n_rev} cấu kiện đổi Rev", expanded=True):
+            with st.expander(f"Xem chi tiết {n_rev} cấu kiện đổi Rev", expanded=False):
                 df_rev = _pd.DataFrame(result.rev_changed).rename(columns={
                     "code": "Mã cấu kiện",
                     "name": "Bản vẽ",

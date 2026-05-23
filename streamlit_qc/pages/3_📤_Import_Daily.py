@@ -140,6 +140,24 @@ n_comp = db.conn.execute(
 ).fetchone()["c"]
 project_info_strip(proj, n_comp=n_comp)
 
+# 🎯 Banner xác nhận dự án — chống import nhầm
+st.markdown(
+    f'<div style="background:linear-gradient(135deg,#0F1E40,#1E3A8A);'
+    f'padding:18px 22px;border-radius:12px;color:#fff;margin:8px 0 12px 0;'
+    f'border-left:6px solid #D4A744;box-shadow:0 4px 14px rgba(15,30,64,0.18);">'
+    f'<div style="font-size:11px;color:#FCE7A1;font-weight:700;'
+    f'letter-spacing:1.5px;text-transform:uppercase;">⚠️ Bạn đang IMPORT DAILY vào dự án:</div>'
+    f'<div style="font-size:24px;font-weight:800;margin-top:4px;letter-spacing:-0.5px;">'
+    f'[{proj["code"]}] {proj["name"]}'
+    f'</div>'
+    f'<div style="font-size:12px;color:rgba(255,255,255,0.78);margin-top:4px;">'
+    f'File daily Fit-up / Final sẽ được match theo MÃ CẤU KIỆN trong dự án này. '
+    f'Nếu sai dự án → đổi ở header trên.'
+    f'</div>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
+
 if n_comp == 0:
     empty_state(icon="📦", title="Dự án chưa có cấu kiện",
                 description="Vào page Import Master nạp PKL trước.")
@@ -528,6 +546,34 @@ with c_dateinfo:
 
 st.write("")
 
+# === Check filename mismatch với project ===
+filename_daily = st.session_state.get(K_UPLOAD_NAME, "") or ""
+filename_upper = filename_daily.upper()
+proj_code_upper = (proj["code"] or "").upper()
+proj_name_upper = (proj["name"] or "").upper()
+
+KNOWN_PROJECTS = ["VIOLA", "PQA", "PHU QUOC", "PPVF", "PVF", "BISON"]
+detected_in_filename = [kp for kp in KNOWN_PROJECTS if kp in filename_upper]
+name_match = bool(
+    proj_code_upper in filename_upper
+    or any(t in filename_upper for t in proj_name_upper.split() if len(t) >= 3)
+)
+has_other_project = any(
+    kp not in proj_code_upper and kp not in proj_name_upper
+    for kp in detected_in_filename
+)
+
+if filename_daily and df is not None and "code" in mapping:
+    if has_other_project and not name_match:
+        st.error(
+            f"🚨 **CẢNH BÁO MISMATCH!** Tên file **`{filename_daily}`** "
+            f"chứa từ khoá dự án khác ({', '.join(detected_in_filename)}), "
+            f"nhưng anh đang import vào **[{proj['code']}] {proj['name']}**. "
+            f"**Kiểm tra lại — có thể anh chọn nhầm dự án!**"
+        )
+    elif name_match:
+        st.success(f"✅ Filename khớp với dự án [{proj['code']}].")
+
 c_dbg, c_imp = st.columns([2, 5])
 with c_dbg:
     do_debug = st.button("🔍 Debug Match", use_container_width=True)
@@ -742,50 +788,34 @@ if do_import and "code" in mapping:
                     f"🤖 **Import Tự động hoàn tất** · "
                     f"{total_matched} cấu kiện cập nhật · "
                     f"{total_records} inspection records · "
-                    f"không khớp {total_notfound}"
                 )
-
-                # Chi tiết theo từng loại
-                cdt1, cdt2 = st.columns(2)
-                with cdt1:
-                    if "FUR" in results:
-                        r = results["FUR"]
-                        st.info(
-                            f"🔨 **Fit-up**: {r.matched_components}/{auto_split_info['n_fur']} "
-                            f"cấu kiện · {r.inspections_added} records · "
-                            f"không khớp {r.not_found}"
-                        )
-                with cdt2:
-                    if "DGRP" in results:
-                        r = results["DGRP"]
-                        st.info(
-                            f"✅ **Final**: {r.matched_components}/{auto_split_info['n_dgrp']} "
-                            f"cấu kiện · {r.inspections_added} records · "
-                            f"không khớp {r.not_found}"
-                        )
         else:
-            # === MODE BÌNH THƯỜNG: import 1 loại ===
-            with st.spinner(f"Đang import..."):
+            # === MODE FUR / DGRP (single type) ===
+            with st.spinner(f"📤 Đang import {chosen_opt['label']}..."):
                 result = daily_import_service.import_daily(
-                    db, pid=pid, df=df, mapping=mapping,
-                    inspection_type=chosen_code,
+                    db, pid=pid, df=df,
+                    mapping=mapping, inspection_type=chosen_code,
                     source_file=source_file,
                     manual_date=manual_date_iso,
                     manual_nfi=manual_nfi.strip(),
                     user_name=user_name,
                 )
+
             if result.matched_components > 0:
                 st.balloons()
-            next_status_label = "Đã nghiệm thu" if chosen_code == "DGRP" else "Đã Fit-up"
+
             st.success(
-                f"**Import {chosen_opt['label']} thành công** · "
-                f"{result.matched_components} cấu kiện cập nhật · "
+                f"📤 **Import {chosen_opt['label']} hoàn tất** · "
+                f"{result.matched_components} cấu kiện · "
                 f"{result.inspections_added} inspection records · "
-                f"không khớp {result.not_found} · "
-                f"→ status mới: **{next_status_label}**"
+                f"không khớp {result.not_found}"
             )
+
+            if result.not_found > 0 and result.unmatched_codes:
+                with st.expander(f"⚠ {result.not_found} mã không khớp"):
+                    st.write(result.unmatched_codes[:50])
     except Exception as e:
         st.error(f"Lỗi import: {e}")
         import traceback
-        with st.expander("Chi tiết"):
+        with st.expander("Chi tiết lỗi"):
             st.code(traceback.format_exc())
