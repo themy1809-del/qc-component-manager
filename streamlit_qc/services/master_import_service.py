@@ -51,6 +51,30 @@ def _existing_inspection_types(db: DB, cid: int) -> set[str]:
     return {r["inspection_type"] for r in rows}
 
 
+def _get_master_inspection(db: DB, cid: int, itype: str) -> dict | None:
+    """
+    Lấy inspection MASTER-source (từ Master import) gần nhất cho component + type.
+    Trả về dict {id, date, rfi} hoặc None nếu chưa có.
+    """
+    row = db.conn.execute(
+        """SELECT id, inspection_date, rfi_no FROM inspections
+           WHERE component_id=? AND inspection_type=? AND source_file='MASTER'
+           ORDER BY id DESC LIMIT 1""",
+        (cid, itype),
+    ).fetchone()
+    if not row:
+        return None
+    return {"id": row["id"], "date": row["inspection_date"] or "", "rfi": row["rfi_no"] or ""}
+
+
+def _update_inspection(db: DB, ins_id: int, new_date: str, new_rfi: str) -> None:
+    """Update date + rfi của 1 inspection record."""
+    db.conn.execute(
+        "UPDATE inspections SET inspection_date=?, rfi_no=? WHERE id=?",
+        (new_date, new_rfi, ins_id),
+    )
+
+
 def import_master(
     db: DB,
     pid: int,
@@ -167,51 +191,65 @@ def import_master(
         else:
             result.updated += 1
 
-        # === Tạo inspection PASS từ cột RFI có sẵn ===
+        # === Tạo/cập nhật inspection PASS từ cột RFI có sẵn ===
+        # NEW LOGIC: nếu đã có MASTER-source inspection → UPDATE date/rfi nếu khác,
+        # KHÔNG skip như trước. Inspection từ DAILY source sẽ KHÔNG bị đụng vào.
         if has_fitup_col or has_final_col:
-            existing_types = _existing_inspection_types(db, cid) if not is_new else set()
 
             # FUR (Fit-up) — có RFI = đã nghiệm thu
             if has_fitup_col:
                 rfi_str = str(rfi_fitup_val or "").strip()
                 if rfi_str and rfi_str.lower() != "nan":
-                    if "FUR" in existing_types:
-                        result.fitup_skipped_exist += 1
+                    new_date = date_fitup_val or ""
+                    existing_master = _get_master_inspection(db, cid, "FUR") if not is_new else None
+                    if existing_master:
+                        # Đã có MASTER inspection — update nếu date/rfi đổi
+                        if existing_master["date"] != new_date or existing_master["rfi"] != rfi_str:
+                            _update_inspection(db, existing_master["id"], new_date, rfi_str)
+                            result.fitup_seeded += 1  # tính như seeded vì có cập nhật
+                        else:
+                            result.fitup_skipped_exist += 1
                     else:
-                        db.add_inspection(
-                            pid=pid,
-                            cid=cid,
-                            itype="FUR",
-                            idate=(date_fitup_val or ""),
-                            inspector=user_name,
-                            result="PASS",
-                            rep="",
-                            rfi=rfi_str,
-                            note="Import từ Master (RFI_Fit-up có sẵn)",
-                            src="MASTER",
-                        )
-                        result.fitup_seeded += 1
+                        # Chưa có MASTER inspection — check xem có DAILY không
+                        existing_types = _existing_inspection_types(db, cid)
+                        if "FUR" in existing_types:
+                            # Đã có FUR từ DAILY → tôn trọng, không tạo trùng từ Master
+                            result.fitup_skipped_exist += 1
+                        else:
+                            db.add_inspection(
+                                pid=pid, cid=cid, itype="FUR",
+                                idate=new_date, inspector=user_name, result="PASS",
+                                rep="", rfi=rfi_str,
+                                note="Import từ Master (RFI_Fit-up có sẵn)",
+                                src="MASTER",
+                            )
+                            result.fitup_seeded += 1
 
             # DGRP (Final) — có RFI = đã nghiệm thu → ACCEPTED
             if has_final_col:
                 rfi_str = str(rfi_final_val or "").strip()
                 if rfi_str and rfi_str.lower() != "nan":
-                    if "DGRP" in existing_types:
-                        result.final_skipped_exist += 1
+                    new_date = date_final_val or ""
+                    existing_master = _get_master_inspection(db, cid, "DGRP") if not is_new else None
+                    if existing_master:
+                        if existing_master["date"] != new_date or existing_master["rfi"] != rfi_str:
+                            _update_inspection(db, existing_master["id"], new_date, rfi_str)
+                            result.final_seeded += 1
+                        else:
+                            result.final_skipped_exist += 1
                     else:
-                        db.add_inspection(
-                            pid=pid,
-                            cid=cid,
-                            itype="DGRP",
-                            idate=(date_final_val or ""),
-                            inspector=user_name,
-                            result="PASS",
-                            rep="",
-                            rfi=rfi_str,
-                            note="Import từ Master (RFI_Final có sẵn)",
-                            src="MASTER",
-                        )
-                        result.final_seeded += 1
+                        existing_types = _existing_inspection_types(db, cid)
+                        if "DGRP" in existing_types:
+                            result.final_skipped_exist += 1
+                        else:
+                            db.add_inspection(
+                                pid=pid, cid=cid, itype="DGRP",
+                                idate=new_date, inspector=user_name, result="PASS",
+                                rep="", rfi=rfi_str,
+                                note="Import từ Master (RFI_Final có sẵn)",
+                                src="MASTER",
+                            )
+                            result.final_seeded += 1
 
     # Commit + audit log
     db.conn.commit()

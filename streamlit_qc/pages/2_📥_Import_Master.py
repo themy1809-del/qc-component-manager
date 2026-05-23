@@ -259,6 +259,67 @@ with c_import:
         disabled=("code" not in mapping or df is None),
     )
 
+# Toggle workflow option
+opt_col1, opt_col2 = st.columns([3, 5])
+with opt_col1:
+    force_reseed = st.checkbox(
+        "🔄 Tạo lại Fit-up/Final từ Master (xóa inspection MASTER cũ trước)",
+        value=False,
+        help="Bật nếu cần force update toàn bộ inspection từ Master columns. "
+             "Inspection từ Daily import sẽ KHÔNG bị đụng vào."
+    )
+
+st.write("")
+
+# ============================================================
+# PREVIEW MODE — hiển thị summary mapping trước khi import
+# ============================================================
+if df is not None and "code" in mapping:
+    code_col = mapping["code"]
+    n_unique_code = df[code_col].nunique() if code_col in df.columns else 0
+    n_rfi_fitup = (df[mapping["rfi_fitup_done"]].notna().sum()
+                   if mapping.get("rfi_fitup_done") in df.columns else 0)
+    n_rfi_final = (df[mapping["rfi_final_done"]].notna().sum()
+                   if mapping.get("rfi_final_done") in df.columns else 0)
+    has_date_fitup = mapping.get("date_fitup_done") in df.columns
+    has_date_final = mapping.get("date_final_done") in df.columns
+
+    code_check_emoji = "✅" if n_unique_code > len(df) * 0.5 else "⚠️"
+    fitup_emoji = "✅" if has_date_fitup else "⚠️"
+    final_emoji = "✅" if has_date_final else "⚠️"
+
+    with st.expander("📋 Preview — Kiểm tra mapping trước khi import", expanded=True):
+        pcol1, pcol2 = st.columns(2)
+        with pcol1:
+            st.markdown(f"""
+**📊 Thống kê file:**
+- Tổng dòng Excel: **{len(df):,}**
+- Mã unique theo cột `code`: **{n_unique_code:,}** {code_check_emoji}
+- Cấu kiện sẽ có Fit-up: **{n_rfi_fitup:,}** {fitup_emoji} ngày
+- Cấu kiện sẽ có Final: **{n_rfi_final:,}** {final_emoji} ngày
+""")
+        with pcol2:
+            st.markdown(f"""
+**🔗 Mapping cột chính:**
+- `code` → `{mapping.get('code', '—')[:50]}`
+- `name` → `{mapping.get('name', '(không map)')[:50]}`
+- `workshop` → `{mapping.get('workshop', '(không map)')[:30]}`
+- `rfi_fitup_done` → `{mapping.get('rfi_fitup_done', '(không có)')[:50]}`
+- `date_fitup_done` → `{mapping.get('date_fitup_done', '(không có)')[:50]}`
+- `rfi_final_done` → `{mapping.get('rfi_final_done', '(không có)')[:50]}`
+- `date_final_done` → `{mapping.get('date_final_done', '(không có)')[:50]}`
+""")
+        if n_unique_code < len(df) * 0.5:
+            st.warning(
+                f"⚠️ **Số mã unique ({n_unique_code:,}) nhỏ hơn nửa số dòng ({len(df):,})!** "
+                f"Có thể cột `code` đang map nhầm. Kiểm tra ở **Tinh chỉnh mapping** bên dưới — "
+                f"nên dùng cột có 'Tên hồ sơ' / 'Tên cấu kiện' / 'Punch No' (full piece-level)."
+            )
+        if not has_date_fitup and mapping.get("rfi_fitup_done"):
+            st.warning("⚠️ Có RFI Fit-up nhưng KHÔNG có Date Fit-up → ngày sẽ rỗng. Check mapping `date_fitup_done`.")
+        if not has_date_final and mapping.get("rfi_final_done"):
+            st.warning("⚠️ Có RFI Final nhưng KHÔNG có Date Final → ngày sẽ rỗng. Check mapping `date_final_done`.")
+
 st.write("")
 
 with st.expander("Xem trước 5 dòng đầu", expanded=False):
@@ -336,6 +397,16 @@ with st.expander("Lưu / Tải template mapping", expanded=False):
 
 if do_import and df is not None and "code" in mapping:
     try:
+        # FORCE RE-SEED: xóa MASTER-source inspections trước khi import (giữ DAILY)
+        if force_reseed:
+            n_deleted = db.conn.execute(
+                """DELETE FROM inspections
+                   WHERE project_id = ? AND source_file = 'MASTER'""",
+                (pid,)
+            ).rowcount
+            db.conn.commit()
+            st.warning(f"🔄 Đã xóa {n_deleted:,} inspection MASTER cũ — sẽ tạo lại từ file mới.")
+
         with st.spinner(f"Đang import {len(df):,} dòng..."):
             result = master_import_service.import_master(
                 db, pid=pid, df=df, mapping=mapping,

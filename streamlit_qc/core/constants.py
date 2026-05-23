@@ -133,10 +133,27 @@ SMART_KEYWORDS: dict[str, list[str]] = {
     # === 4 field cho inspection ĐÃ NGHIỆM THU sẵn từ Master ===
     # File master một số dự án (vd: Phú Quốc) đã có cột RFI Fit-up / Final
     # đã ký → app sẽ tự tạo inspection PASS tương ứng khi import.
-    "rfi_fitup_done":   ["rfi_fit-up", "rfi fit-up", "rfi fitup", "rfi_fitup", "phiếu rfi fit-up"],
-    "date_fitup_done":  ["ngày kiểm tra fit-up", "ngày fit-up", "date fitup", "date fit-up"],
-    "rfi_final_done":   ["rfi_final dim", "rfi_final", "rfi final", "rfi final dim", "phiếu rfi final"],
-    "date_final_done":  ["ngày kiểm tra final", "ngày final", "date final", "date final dim"],
+    # Hỗ trợ cả 2 quy ước: Phú Quốc (Fit-up) + VIOLA (FUR / DIR+VIR)
+    "rfi_fitup_done":   [
+        "rfi no-fur", "rfi-fur", "rfi fur", "rfi_fur",  # VIOLA
+        "rfi_fit-up", "rfi fit-up", "rfi fitup", "rfi_fitup",  # Phú Quốc
+        "phiếu rfi fit-up",
+    ],
+    "date_fitup_done":  [
+        "date-fur", "date fur", "date_fur",  # VIOLA
+        "ngày kiểm tra fit-up", "ngày fit-up", "date fitup", "date fit-up",  # Phú Quốc
+    ],
+    "rfi_final_done":   [
+        "rfi no-dir+vir", "rfi-dir+vir", "rfi dir+vir", "rfi_dir+vir",  # VIOLA (Final = DIR+VIR)
+        "rfi-dir", "rfi dir", "rfi-vir", "rfi vir",
+        "rfi_final dim", "rfi_final", "rfi final", "rfi final dim",  # Phú Quốc
+        "phiếu rfi final",
+    ],
+    "date_final_done":  [
+        "date-dir+vir", "date dir+vir", "date_dir+vir",  # VIOLA
+        "date-dir", "date dir", "date-vir", "date vir",
+        "ngày kiểm tra final", "ngày final", "date final", "date final dim",  # Phú Quốc
+    ],
 }
 
 # 24 trường chuẩn (mô tả tiếng Việt) - từ Tkinter dòng 155-166

@@ -204,12 +204,14 @@ def smart_match_columns(
                 continue
             for rank, kw in enumerate(keywords):
                 kw_norm = kw.lower()
+                # Scoring mới: rank được nhân hệ số 10 cho exact match
+                # → substring của keyword rank 0 (score ~80) beat exact match keyword rank ≥4 (score ≤60)
                 if norm == kw_norm:
-                    score = 100 - rank
+                    score = 100 - rank * 10
                 elif kw_norm in norm:
-                    score = 50 - rank
+                    score = 80 - rank * 2
                 elif norm in kw_norm and len(norm) >= 3:
-                    score = 30 - rank
+                    score = 50 - rank * 2
                 else:
                     continue
                 if score > best_score:
