@@ -32,18 +32,21 @@ class DashboardData:
     """Top 200 inspection mới nhất (đã áp filter)."""
 
 
+def _ws_expr(db: DB, col: str = "data_json") -> str:
+    """Trả về SQL expression để extract workshop từ JSON column."""
+    if db.is_postgres:
+        return f"COALESCE({col}::jsonb->>'workshop', '(không xưởng)')"
+    return f"COALESCE(json_extract({col}, '$.workshop'), '(không xưởng)')"
+
+
 def get_workshop_list(db: DB, pid: int) -> list[str]:
-    """Trả về danh sách xưởng unique có trong dự án, sorted."""
-    ws_set: set[str] = set()
-    for r in db.conn.execute(
-        "SELECT data_json FROM components WHERE project_id=?",
+    """Trả về danh sách xưởng unique — aggregate trong SQL."""
+    ws_expr = _ws_expr(db)
+    rows = db.conn.execute(
+        f"SELECT DISTINCT {ws_expr} AS ws FROM components WHERE project_id=?",
         (pid,),
-    ):
-        d = json.loads(r["data_json"])
-        w = d.get("workshop")
-        if w:
-            ws_set.add(str(w))
-    return sorted(ws_set)
+    ).fetchall()
+    return sorted({r["ws"] for r in rows if r["ws"] and r["ws"] != "(không xưởng)"})
 
 
 def compute_dashboard(
@@ -52,51 +55,57 @@ def compute_dashboard(
     workshop_filter: str | None = None,
 ) -> DashboardData:
     """
-    Tính toàn bộ số liệu dashboard.
-
-    Args:
-        db: DB instance.
-        pid: ID dự án hiện tại.
-        workshop_filter: Tên xưởng cụ thể, None = tất cả xưởng.
-
-    Returns:
-        DashboardData với 4 phần dữ liệu.
+    Tính toàn bộ số liệu dashboard — TỐI ƯU dùng SQL aggregate.
     """
     data = DashboardData()
+    ws_expr = _ws_expr(db)
     data.workshop_list = get_workshop_list(db, pid)
 
-    # ----- 1. Đếm theo status (có filter xưởng) -----
+    # ----- 1. Đếm theo status (có filter xưởng) — SQL GROUP BY -----
     counts: dict[str, int] = {s: 0 for s in ALL_STATUSES}
     counts["TOTAL"] = 0
     ids_in_filter: set[int] = set()
 
-    for r in db.conn.execute(
-        "SELECT id, status, data_json FROM components WHERE project_id=?",
-        (pid,),
-    ):
-        if workshop_filter:
-            d = json.loads(r["data_json"])
-            if str(d.get("workshop", "")) != workshop_filter:
-                continue
-        ids_in_filter.add(r["id"])
-        status = r["status"]
-        counts[status] = counts.get(status, 0) + 1
-        counts["TOTAL"] += 1
+    if workshop_filter:
+        rows = db.conn.execute(
+            f"""
+            SELECT id, status FROM components
+            WHERE project_id=? AND {ws_expr} = ?
+            """,
+            (pid, workshop_filter),
+        ).fetchall()
+        for r in rows:
+            ids_in_filter.add(r["id"])
+            counts[r["status"]] = counts.get(r["status"], 0) + 1
+            counts["TOTAL"] += 1
+    else:
+        rows = db.conn.execute(
+            "SELECT status, COUNT(*) c FROM components WHERE project_id=? GROUP BY status",
+            (pid,),
+        ).fetchall()
+        for r in rows:
+            counts[r["status"]] = r["c"]
+            counts["TOTAL"] += r["c"]
     data.counts = counts
 
-    # ----- 2. Bảng thống kê theo xưởng (KHÔNG áp filter để xem toàn cảnh) -----
-    ws_stats: dict[str, dict[str, int]] = {}
-    for r in db.conn.execute(
-        "SELECT status, data_json FROM components WHERE project_id=?",
+    # ----- 2. Bảng thống kê theo xưởng — SQL GROUP BY (KHÔNG fetch 14k rows) -----
+    ws_rows = db.conn.execute(
+        f"""
+        SELECT {ws_expr} AS ws, status, COUNT(*) c
+        FROM components WHERE project_id=?
+        GROUP BY ws, status
+        """,
         (pid,),
-    ):
-        d = json.loads(r["data_json"])
-        w = str(d.get("workshop") or "(không xưởng)")
+    ).fetchall()
+    ws_stats: dict[str, dict[str, int]] = {}
+    for r in ws_rows:
+        w = r["ws"] or "(không xưởng)"
         if w not in ws_stats:
             ws_stats[w] = {s: 0 for s in ALL_STATUSES}
             ws_stats[w]["TOTAL"] = 0
-        ws_stats[w]["TOTAL"] += 1
-        ws_stats[w][r["status"]] = ws_stats[w].get(r["status"], 0) + 1
+        cnt = r["c"]
+        ws_stats[w]["TOTAL"] += cnt
+        ws_stats[w][r["status"]] = ws_stats[w].get(r["status"], 0) + cnt
 
     rows = []
     for w in sorted(ws_stats.keys()):

@@ -180,6 +180,87 @@ def get_components_missing_fitup(db: DB, pid: int, codes: list[str]) -> list[dic
     return result
 
 
+# ====================================================================
+# OVERDUE DETECTION — Cảnh báo cấu kiện Fit-up quá hạn chưa Final
+# ====================================================================
+def get_overdue_components(
+    db: DB,
+    pid: int,
+    threshold_days: int = 7,
+) -> list[dict]:
+    """
+    Tìm cấu kiện đã PASS Fit-up nhưng > threshold_days vẫn chưa có Final.
+    Tối ưu: filter ngày trong SQL, chỉ fetch những row cần thiết.
+    """
+    import datetime as dt
+    today = dt.date.today()
+    cutoff = (today - dt.timedelta(days=threshold_days)).isoformat()
+
+    # Filter cutoff trong SQL — giảm số row fetch về Python
+    rows = db.conn.execute(
+        """
+        SELECT c.id cid, c.code, c.data_json, c.status,
+               fitup.last_fitup_date
+        FROM components c
+        INNER JOIN (
+            SELECT i.component_id, MAX(i.inspection_date) last_fitup_date
+            FROM inspections i
+            WHERE i.project_id = ? AND i.inspection_type = 'FUR'
+                  AND i.result = 'PASS' AND i.inspection_date != ''
+            GROUP BY i.component_id
+        ) fitup ON fitup.component_id = c.id
+        LEFT JOIN (
+            SELECT DISTINCT i.component_id
+            FROM inspections i
+            WHERE i.project_id = ? AND i.inspection_type = 'DGRP'
+                  AND i.result = 'PASS'
+        ) final ON final.component_id = c.id
+        WHERE c.project_id = ?
+              AND final.component_id IS NULL
+              AND fitup.last_fitup_date <= ?
+        """,
+        (pid, pid, pid, cutoff),
+    ).fetchall()
+
+    out = []
+    for r in rows:
+        fitup_iso = r["last_fitup_date"]
+        if not fitup_iso:
+            continue
+        try:
+            fitup_date = dt.date.fromisoformat(fitup_iso[:10])
+        except (ValueError, TypeError):
+            continue
+        days_diff = (today - fitup_date).days
+        if days_diff < threshold_days:
+            continue
+        try:
+            d = json.loads(r["data_json"])
+            name = str(d.get("manual_drawing") or d.get("drawing")
+                       or d.get("member_no") or d.get("section") or "")
+            workshop = str(d.get("workshop", "") or "")
+        except (json.JSONDecodeError, TypeError):
+            name = ""
+            workshop = ""
+        out.append({
+            "id": r["cid"],
+            "code": r["code"],
+            "name": name or "(không tên)",
+            "workshop": workshop or "—",
+            "fitup_date": format_date_vn(fitup_iso),
+            "days_overdue": days_diff,
+            "status": r["status"] or "IN_PROGRESS",
+        })
+    # Sort lâu nhất lên đầu
+    out.sort(key=lambda x: x["days_overdue"], reverse=True)
+    return out
+
+
+def count_overdue(db: DB, pid: int, threshold_days: int = 7) -> int:
+    """Đếm nhanh số cấu kiện overdue (cho badge KPI)."""
+    return len(get_overdue_components(db, pid, threshold_days))
+
+
 def list_components(
     db: DB,
     pid: int,

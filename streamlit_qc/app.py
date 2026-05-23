@@ -159,27 +159,44 @@ if active_pid is None or proj is None:
     st.stop()
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def project_workshops(_db, pid: int) -> dict:
-    """Dùng DB class — hỗ trợ cả SQLite + Postgres."""
+    """
+    Aggregate workshop counts trong SQL — KHÔNG fetch 14k rows data_json.
+    Tối ưu: dùng JSON operator của Postgres (->>'workshop') hoặc SQLite (json_extract).
+    """
+    if _db.is_postgres:
+        ws_extract = "COALESCE(data_json::jsonb->>'workshop', '(không xưởng)')"
+    else:
+        ws_extract = "COALESCE(json_extract(data_json, '$.workshop'), '(không xưởng)')"
+
     rows = _db.conn.execute(
-        "SELECT status, data_json FROM components WHERE project_id=?", (pid,)
+        f"""
+        SELECT {ws_extract} AS ws, status, COUNT(*) c
+        FROM components WHERE project_id=?
+        GROUP BY ws, status
+        """,
+        (pid,),
     ).fetchall()
+
     ws_data: dict[str, dict] = {}
     total_proj = 0
     done_proj = 0
     for r in rows:
-        d = json.loads(r["data_json"])
-        w = str(d.get("workshop") or "(không xưởng)")
+        w = r["ws"] or "(không xưởng)"
+        st_v = r["status"]
+        cnt = r["c"]
         if w not in ws_data:
             ws_data[w] = {"workshop": w, "TOTAL": 0,
                           "PENDING": 0, "IN_PROGRESS": 0,
                           "PASSED": 0, "FAILED": 0, "ACCEPTED": 0}
-        ws_data[w]["TOTAL"] += 1
-        ws_data[w][r["status"]] = ws_data[w].get(r["status"], 0) + 1
-        total_proj += 1
-        if r["status"] in (STATUS_PASSED, STATUS_ACCEPTED):
-            done_proj += 1
+        ws_data[w]["TOTAL"] += cnt
+        if st_v in ws_data[w]:
+            ws_data[w][st_v] += cnt
+        total_proj += cnt
+        if st_v in (STATUS_PASSED, STATUS_ACCEPTED):
+            done_proj += cnt
+
     workshops = []
     for w in sorted(ws_data.keys()):
         s = ws_data[w]
@@ -195,23 +212,25 @@ def project_workshops(_db, pid: int) -> dict:
     }
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def workshop_activity(_db, pid: int, workshop: str, limit: int = 10) -> list[dict]:
-    rows = _db.conn.execute("""
+    """Filter workshop trong SQL — chỉ fetch số dòng cần thiết."""
+    if _db.is_postgres:
+        ws_extract = "COALESCE(c.data_json::jsonb->>'workshop', '(không xưởng)')"
+    else:
+        ws_extract = "COALESCE(json_extract(c.data_json, '$.workshop'), '(không xưởng)')"
+
+    rows = _db.conn.execute(
+        f"""
         SELECT i.inspection_date, i.imported_at, i.inspection_type, i.result,
-               i.inspector, c.code AS comp_code, c.data_json
+               i.inspector, c.code AS comp_code
         FROM inspections i JOIN components c ON i.component_id = c.id
-        WHERE i.project_id = ? ORDER BY i.id DESC LIMIT 800
-    """, (pid,)).fetchall()
-    out = []
-    for r in rows:
-        if len(out) >= limit:
-            break
-        d = json.loads(r["data_json"])
-        if str(d.get("workshop") or "(không xưởng)") != workshop:
-            continue
-        out.append(dict(r))
-    return out
+        WHERE i.project_id = ? AND {ws_extract} = ?
+        ORDER BY i.id DESC LIMIT ?
+        """,
+        (pid, workshop, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
 
 
 data = project_workshops(db, active_pid)
@@ -244,6 +263,71 @@ emit(f"""
 </div>
 </div>
 """)
+
+# ============================================================
+# 1.5 CẢNH BÁO OVERDUE — cấu kiện Fit-up > N ngày chưa Final
+# ============================================================
+from streamlit_qc.services import component_service
+
+# Cấu hình ngưỡng (default 7 ngày, có thể override qua session)
+if "overdue_threshold" not in st.session_state:
+    st.session_state["overdue_threshold"] = 7
+threshold_days = st.session_state["overdue_threshold"]
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_overdue(_db, pid: int, threshold: int) -> list[dict]:
+    return component_service.get_overdue_components(_db, pid, threshold)
+
+
+overdue_list = get_overdue(db, active_pid, threshold_days)
+n_overdue = len(overdue_list)
+
+if n_overdue > 0:
+    # Box cảnh báo đỏ nếu có overdue
+    top3 = overdue_list[:3]
+    top3_html = ""
+    for o in top3:
+        top3_html += (
+            f'<div style="display:inline-block;background:#fff;border:1px solid #fecaca;'
+            f'border-radius:6px;padding:4px 10px;margin-right:6px;margin-bottom:4px;'
+            f'font-size:11px;color:#991b1b;">'
+            f'<b>{o["code"]}</b> · {o["workshop"]} · '
+            f'<span style="color:#DC2626;font-weight:700;">{o["days_overdue"]} ngày</span>'
+            f'</div>'
+        )
+
+    emit(f"""
+<div style="background:#fef2f2;border:1px solid #fecaca;border-left:5px solid #DC2626;
+            border-radius:10px;padding:14px 18px;margin:14px 0;
+            display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+<div style="flex:1;min-width:280px;">
+<div style="font-size:12px;color:#991b1b;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">
+⚠ Cảnh báo: Cấu kiện đã Fit-up quá hạn chưa Final
+</div>
+<div style="font-size:28px;font-weight:800;color:#DC2626;line-height:1;margin-top:4px;">
+{n_overdue:,} <span style="font-size:14px;font-weight:500;color:#7f1d1d;">cấu kiện (Fit-up &gt; {threshold_days} ngày)</span>
+</div>
+<div style="margin-top:8px;">{top3_html}</div>
+</div>
+</div>
+""")
+    btn_col1, btn_col2, _ = st.columns([2, 2, 4])
+    with btn_col1:
+        if st.button(f"🔧 Xem danh sách {n_overdue} cấu kiện overdue",
+                     key="goto_overdue", type="primary", use_container_width=True):
+            st.session_state["preset_overdue_filter"] = True
+            st.switch_page("pages/4_🔧_Cấu_kiện.py")
+    with btn_col2:
+        new_threshold = st.number_input(
+            "Đổi ngưỡng (ngày)", min_value=1, max_value=90,
+            value=threshold_days, key="overdue_threshold_input",
+            help="Số ngày sau Fit-up coi là overdue. Mặc định 7.",
+        )
+        if new_threshold != threshold_days:
+            st.session_state["overdue_threshold"] = int(new_threshold)
+            get_overdue.clear()
+            st.rerun()
 
 # ============================================================
 # 2. WORKSHOP GRID — MINIMAL

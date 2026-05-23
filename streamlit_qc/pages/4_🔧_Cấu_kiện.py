@@ -53,7 +53,10 @@ if pid is None or proj is None:
 
 project_info_strip(proj)
 
-flt_col1, flt_col2, flt_col3, flt_col4 = st.columns([2, 3, 1.2, 1.5])
+# Pre-set overdue filter từ Trang chủ (nếu có)
+_preset_overdue = st.session_state.pop("preset_overdue_filter", False)
+
+flt_col1, flt_col2, flt_col3, flt_col4, flt_col5 = st.columns([2, 3, 1.2, 1.2, 1.3])
 with flt_col1:
     # Pre-set status nếu user click từ KPI trang Tổng quan
     _status_options = ["ALL"] + ALL_STATUSES
@@ -70,13 +73,35 @@ with flt_col3:
     st.write("")
     st.write("")
     if st.button("🧹 Xoá lọc", use_container_width=True):
-        for key in ["status", "search"] + [f"flt_{f}" for f, _ in COMPONENT_FILTER_FIELDS]:
+        for key in ["status", "search", "only_overdue"] + [f"flt_{f}" for f, _ in COMPONENT_FILTER_FIELDS]:
             st.session_state.pop(key, None)
         st.rerun()
 with flt_col4:
     st.write("")
     st.write("")
     show_filters = st.toggle("🎚 Lọc cột", value=False)
+with flt_col5:
+    st.write("")
+    st.write("")
+    only_overdue = st.toggle(
+        "⚠️ Chỉ overdue",
+        value=_preset_overdue,
+        key="only_overdue",
+        help="Chỉ hiển thị cấu kiện đã Fit-up nhưng quá 7 ngày chưa Final",
+    )
+
+# Tính set ID overdue nếu filter bật (cache 60s)
+@st.cache_data(ttl=60, show_spinner=False)
+def _get_overdue_cached(_db, pid_in: int, threshold: int = 7) -> list[dict]:
+    return component_service.get_overdue_components(_db, pid_in, threshold)
+
+overdue_ids: set[int] = set()
+if only_overdue:
+    overdue_list = _get_overdue_cached(db, pid, 7)
+    overdue_ids = {o["id"] for o in overdue_list}
+    if not overdue_ids:
+        st.success("🎉 Không có cấu kiện nào overdue! (Fit-up > 7 ngày chưa Final)")
+        st.stop()
 
 dropdown_filters = {}
 if show_filters:
@@ -94,6 +119,10 @@ with st.spinner("Đang tải..."):
     data = component_service.list_components(db, pid, status=status,
                                               search=search, dropdown_filters=dropdown_filters)
 
+# Áp filter overdue (sau khi đã load list)
+if only_overdue and overdue_ids:
+    data.rows = [r for r in data.rows if r.id in overdue_ids]
+
 status_label = "tất cả trạng thái" if status == "ALL" else STATUS_LABELS.get(status, status)
 caption_parts = [
     f"Tổng dự án: **{data.total_in_db:,}**",
@@ -101,6 +130,8 @@ caption_parts = [
 ]
 if dropdown_filters:
     caption_parts.append(f"Sau filter cột: **{data.after_dropdown_filter:,}**")
+if only_overdue:
+    caption_parts.append(f"⚠️ Chỉ overdue: **{len(data.rows):,}**")
 st.caption(" · ".join(caption_parts))
 
 if not data.rows:
