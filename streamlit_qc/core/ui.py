@@ -206,15 +206,37 @@ def _maybe_show_new_project_dialog(db):
         _new_project_dialog(db)
 
 
-def project_info_strip(proj, n_comp=None):
-    """Dải info compact cho dự án."""
-    parts = [f"<b>[{proj['code']}]</b> {proj['name']}"]
+def project_info_strip(proj=None, n_comp=None):
+    """
+    Dải info compact cho dự án.
+
+    Nếu proj=None → tự tra cứu từ session state (pid hiện tại).
+    """
+    if proj is None:
+        try:
+            from streamlit_qc.core.state import get_current_project_id, get_db
+            pid = get_current_project_id()
+            if pid is None:
+                return
+            db_inst = get_db()
+            row = db_inst.get_project(pid)
+            if not row:
+                return
+            proj = dict(row) if not isinstance(row, dict) else row
+        except Exception:
+            return
+
+    code = proj["code"] if "code" in proj else "—"
+    name = proj["name"] if "name" in proj else "—"
+    parts = [f"<b>[{code}]</b> {name}"]
     if n_comp is not None:
         parts.append(f"📦 <b>{n_comp:,}</b> cấu kiện")
-    if proj.get("location"):
-        parts.append(f"📍 {proj['location']}")
-    if proj.get("owner"):
-        parts.append(f"🏢 {proj['owner']}")
+    loc = proj["location"] if "location" in proj else None
+    owner = proj["owner"] if "owner" in proj else None
+    if loc:
+        parts.append(f"📍 {loc}")
+    if owner:
+        parts.append(f"🏢 {owner}")
     st.markdown(
         f"<div style='background:{GOLD_SOFT};border:1px solid {GOLD};color:{NAVY_DARK};"
         f"padding:8px 14px;border-radius:8px;font-size:13px;line-height:1.6;"
