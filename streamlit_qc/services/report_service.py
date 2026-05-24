@@ -49,21 +49,45 @@ class ReportData:
     by_inspector: list[dict] = field(default_factory=list)
 
 
-def get_inspection_date_range(db: DB, pid: int) -> tuple[dt.date | None, dt.date | None]:
-    """Trả về (min_date, max_date) của tất cả inspection trong dự án."""
+def has_any_inspection(db: DB, pid: int) -> bool:
+    """Có bất kỳ inspection nào (kể cả date rỗng)?"""
     row = db.conn.execute(
-        "SELECT MIN(inspection_date) mn, MAX(inspection_date) mx "
-        "FROM inspections WHERE project_id=? AND inspection_date IS NOT NULL",
+        "SELECT COUNT(*) cnt FROM inspections WHERE project_id=?",
         (pid,),
     ).fetchone()
-    if not row or not row["mn"]:
-        return None, None
-    try:
-        mn = dt.date.fromisoformat(row["mn"][:10])
-        mx = dt.date.fromisoformat(row["mx"][:10])
-        return mn, mx
-    except ValueError:
-        return None, None
+    return bool(row and row["cnt"] > 0)
+
+
+def get_inspection_date_range(db: DB, pid: int) -> tuple[dt.date | None, dt.date | None]:
+    """
+    Trả về (min_date, max_date) của tất cả inspection trong dự án.
+
+    BUG FIX 2026-05: cũ chỉ check NULL, nhưng nhiều inspection có
+    date = "" (chuỗi rỗng) khi seed từ Master. Giờ filter cả NULL + rỗng.
+    Nếu có inspection nhưng không có date parseable → trả ngày hôm nay làm fallback.
+    """
+    row = db.conn.execute(
+        "SELECT MIN(inspection_date) mn, MAX(inspection_date) mx "
+        "FROM inspections "
+        "WHERE project_id=? AND inspection_date IS NOT NULL "
+        "AND inspection_date != '' AND LENGTH(inspection_date) >= 10",
+        (pid,),
+    ).fetchone()
+
+    if row and row["mn"]:
+        try:
+            mn = dt.date.fromisoformat(row["mn"][:10])
+            mx = dt.date.fromisoformat(row["mx"][:10])
+            return mn, mx
+        except ValueError:
+            pass
+
+    # Fallback: CÓ inspection nhưng date không parse được → today range
+    if has_any_inspection(db, pid):
+        today = dt.date.today()
+        return today, today
+
+    return None, None
 
 
 def compute_report(

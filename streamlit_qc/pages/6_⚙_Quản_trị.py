@@ -215,6 +215,31 @@ ms2.metric("7 ngày qua", f"{stats['sessions_7d']}", help="Session duy nhất 7 
 ms3.metric("Tất cả", f"{stats['total_sessions']:,}", help="Tổng session toàn thời gian")
 ms4.metric("Tổng pageviews", f"{stats['total_page_views']:,}", help="Tổng số lần xem page")
 
+# === Debug + Test logging ===
+with st.expander("🛠️ Debug logging (nếu thấy = 0 ngay cả khi app đang dùng)"):
+    last_err = access_tracker.get_last_error()
+    if last_err:
+        st.error(f"❌ Lỗi gần nhất khi track_visit: `{last_err}`")
+    else:
+        st.success("✅ Không có lỗi tracking gần đây.")
+
+    cdbg1, cdbg2 = st.columns([1, 2])
+    if cdbg1.button("🧪 Test ghi 1 log record"):
+        ok, msg = access_tracker.force_test_log(db)
+        if ok:
+            cdbg2.success(msg)
+        else:
+            cdbg2.error(msg)
+
+    # Verify table exists
+    try:
+        tbl_check = db.conn.execute(
+            "SELECT COUNT(*) c FROM access_log"
+        ).fetchone()
+        st.caption(f"Bảng `access_log` tồn tại — tổng record: **{tbl_check['c']:,}**")
+    except Exception as e:
+        st.error(f"Bảng `access_log` KHÔNG TỒN TẠI: {e}")
+
 # Chart daily visits 14 ngày
 daily = access_tracker.get_daily_visits(db, days=14)
 if daily:

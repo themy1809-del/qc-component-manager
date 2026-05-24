@@ -106,6 +106,9 @@ def import_master(
     has_fitup_col = bool(mapping.get("rfi_fitup_done"))
     has_final_col = bool(mapping.get("rfi_final_done"))
 
+    # Tập cột Excel đã được map (để loại ra khi gom _extra)
+    mapped_excel_cols = {c for c in mapping.values() if c}
+
     for _, row in df.iterrows():
         data = {}
         rfi_fitup_val = None
@@ -136,6 +139,27 @@ def import_master(
             if fld == "plan_date":
                 v = excel_date_to_iso(v)
             data[fld] = v
+
+        # ★ GIỮ TẤT CẢ CỘT CHƯA ĐƯỢC MAP vào data["_extra"]
+        # → phục vụ Dimension/Welding/Paint report cần Length, Width, Material, Spec...
+        extra = {}
+        for col in row.index:
+            if col in mapped_excel_cols:
+                continue
+            v = row.get(col)
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                continue
+            key = str(col).strip()
+            if not key or key.lower().startswith("unnamed"):
+                continue
+            # Convert non-JSON-safe types to str
+            if hasattr(v, "isoformat"):
+                v = v.isoformat()
+            elif not isinstance(v, (str, int, float, bool)):
+                v = str(v)
+            extra[key] = v
+        if extra:
+            data["_extra"] = extra
 
         code = str(data.get("code") or "").strip()
         if not code or code.lower() == "nan":
@@ -220,7 +244,6 @@ def import_master(
                                 idate=new_date, inspector=user_name, result="PASS",
                                 rep="", rfi=rfi_str,
                                 note="Import tu Master (RFI Final co san)",
-                                src="MASTER",
                             )
                             result.final_seeded += 1
 

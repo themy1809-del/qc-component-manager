@@ -126,9 +126,30 @@ if show_filters:
             if chosen and chosen != "(Tất cả)":
                 dropdown_filters[field] = chosen
 
-with st.spinner("Đang tải..."):
-    data = component_service.list_components(db, pid, status=status,
-                                              search=search, dropdown_filters=dropdown_filters)
+# === Loading skeleton: shimmer placeholder cho 7K+ rows ===
+_load_placeholder = st.empty()
+_load_placeholder.markdown(
+    """
+    <style>
+    @keyframes _qc_shimmer {
+      0%{background-position:200% 0;} 100%{background-position:-200% 0;}
+    }
+    .qc-skel{background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);
+        background-size:200% 100%;animation:_qc_shimmer 1.5s infinite;
+        border-radius:6px;margin:6px 0;}
+    </style>
+    <div class="qc-skel" style="height:32px;"></div>
+    <div class="qc-skel" style="height:200px;"></div>
+    <div style="text-align:center;color:#64748b;font-size:13px;margin-top:8px;">
+      ⏳ Đang tải dữ liệu cấu kiện... (dự án lớn có thể mất 2–5 giây)
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+data = component_service.list_components(
+    db, pid, status=status, search=search, dropdown_filters=dropdown_filters,
+)
+_load_placeholder.empty()
 
 # Áp filter overdue (sau khi đã load list)
 if only_overdue and overdue_ids:
@@ -236,7 +257,87 @@ if n_selected == 1:
     single_row = edited[edited["id"] == single_cid].iloc[0]
     single_code = single_row["Tên cấu kiện"]
 
-    with st.expander(f"💬 Comment cho cấu kiện **{single_code}**", expanded=True):
+    # === Copy link cấu kiện để share ===
+    try:
+        from urllib.parse import urlencode
+        share_params = urlencode({"pid": pid, "code": single_code})
+        share_link = f"?{share_params}"
+        st.code(share_link, language=None)
+        st.caption(
+            f"📎 Link share cấu kiện **{single_code}** — paste sau URL gốc của app, "
+            "hoặc copy thẳng để dán vào Zalo/email."
+        )
+    except Exception:
+        pass
+
+    # === 📅 TIMELINE VIEW — lịch sử inspection của 1 cấu kiện ===
+    with st.expander(f"📅 Timeline kiểm tra **{single_code}**", expanded=True):
+        timeline_rows = db.conn.execute(
+            """SELECT inspection_type, inspection_date, inspector, result,
+                      report_no, rfi_no, source_file, imported_at
+               FROM inspections WHERE component_id=?
+               ORDER BY inspection_date ASC, id ASC""",
+            (single_cid,),
+        ).fetchall()
+
+        if not timeline_rows:
+            st.info("Cấu kiện này chưa có inspection nào. Vào **Bulk KT** hoặc **Import Daily**.")
+        else:
+            # Vertical timeline với màu theo loại
+            TYPE_COLOR = {
+                "FUR": "#F59E0B",   # amber — Fit-up
+                "DIR": "#3B82F6",   # blue — Dimension
+                "VIR": "#0EA5E9",   # sky — Visual
+                "NDT": "#A855F7",   # purple — NDT
+                "DGRP": "#10B981",  # emerald — Final
+            }
+            RESULT_ICON = {"PASS": "✅", "FAIL": "❌", "RECHECK": "🔁"}
+            timeline_html = '<div style="border-left:3px solid #D4A744;padding-left:18px;margin:8px 0;">'
+            for r in timeline_rows:
+                itype = r["inspection_type"] or "?"
+                color = TYPE_COLOR.get(itype, "#94A3B8")
+                idate = (r["inspection_date"] or "(chưa có ngày)")[:10]
+                result = r["result"] or ""
+                icon = RESULT_ICON.get(result, "⚪")
+                inspector = r["inspector"] or ""
+                rfi = r["rfi_no"] or ""
+                report = r["report_no"] or ""
+                src = r["source_file"] or ""
+                timeline_html += f"""
+                <div style="margin-bottom:14px;position:relative;">
+                  <div style="position:absolute;left:-26px;top:2px;width:14px;height:14px;
+                       border-radius:50%;background:{color};
+                       border:3px solid white;box-shadow:0 0 0 2px {color};"></div>
+                  <div style="font-weight:700;color:{color};font-size:14px;">
+                    {icon} {itype} — {result} <span style="color:#64748B;font-weight:400;">({idate})</span>
+                  </div>
+                  <div style="color:#475569;font-size:12px;margin-top:2px;">
+                    👤 {inspector or '—'} · 📋 RFI: <code>{rfi or '—'}</code>
+                    · 🔖 Report: <code>{report or '—'}</code>
+                    · 📁 <code>{src}</code>
+                  </div>
+                </div>
+                """
+            timeline_html += "</div>"
+            st.markdown(timeline_html, unsafe_allow_html=True)
+
+            # Mini stats
+            from collections import Counter
+            type_counts = Counter(r["inspection_type"] for r in timeline_rows)
+            result_counts = Counter(r["result"] for r in timeline_rows if r["result"])
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("Tổng inspection", len(timeline_rows))
+            mc2.metric(
+                "Loại nhiều nhất",
+                f"{type_counts.most_common(1)[0][0]} ({type_counts.most_common(1)[0][1]})"
+                if type_counts else "—",
+            )
+            mc3.metric(
+                "PASS rate",
+                f"{result_counts.get('PASS', 0) * 100 / max(1, sum(result_counts.values())):.0f}%",
+            )
+
+    with st.expander(f"💬 Comment cho cấu kiện **{single_code}**", expanded=False):
         # Form thêm comment
         new_comment = st.text_area(
             "Thêm comment", placeholder="Ghi chú QC, mô tả vấn đề, tag đồng nghiệp...",
@@ -425,6 +526,7 @@ with exp_col1:
 
 with exp_col2:
     accepted_ids = [r.id for r in data.rows if r.status == "ACCEPTED"]
+    n_accepted = len(accepted_ids)
     n_accepted = len(accepted_ids)
     gen_pdf = st.button(
         f"📄 PDF biên bản ({n_accepted} ACCEPTED)",

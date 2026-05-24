@@ -262,6 +262,154 @@ class DB:
                 ON access_log(session_id);
             CREATE INDEX IF NOT EXISTS idx_access_ts
                 ON access_log(ts DESC);
+
+            CREATE TABLE IF NOT EXISTS ncrs (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                component_id INTEGER REFERENCES components(id) ON DELETE SET NULL,
+                ncr_no TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                severity TEXT DEFAULT 'MEDIUM',
+                status TEXT DEFAULT 'OPEN',
+                deadline TEXT,
+                raised_by TEXT,
+                resolved_by TEXT,
+                resolved_at TEXT,
+                root_cause TEXT,
+                corrective_action TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_ncr_proj_status
+                ON ncrs(project_id, status);
+            CREATE INDEX IF NOT EXISTS idx_ncr_no
+                ON ncrs(ncr_no);
+
+            CREATE TABLE IF NOT EXISTS rfis (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                component_id INTEGER REFERENCES components(id) ON DELETE CASCADE,
+                rfi_no TEXT UNIQUE NOT NULL,
+                inspection_type TEXT NOT NULL,
+                proposed_date TEXT NOT NULL,
+                confirmed_date TEXT,
+                status TEXT DEFAULT 'SUBMITTED',
+                submitted_by TEXT,
+                response_note TEXT,
+                is_hold_point INTEGER DEFAULT 0,
+                witness_required TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_rfis_proj_status
+                ON rfis(project_id, status);
+            CREATE INDEX IF NOT EXISTS idx_rfis_no ON rfis(rfi_no);
+
+            CREATE TABLE IF NOT EXISTS itp_templates (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                component_type TEXT,
+                checkpoints TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS itp_records (
+                id SERIAL PRIMARY KEY,
+                component_id INTEGER NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+                template_id INTEGER REFERENCES itp_templates(id) ON DELETE SET NULL,
+                checkpoint_seq INTEGER NOT NULL,
+                checkpoint_name TEXT NOT NULL,
+                hold_type TEXT,
+                result TEXT,
+                inspector TEXT,
+                inspected_at TIMESTAMP,
+                witness_by TEXT,
+                witness_at TIMESTAMP,
+                remarks TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(component_id, checkpoint_seq)
+            );
+            CREATE INDEX IF NOT EXISTS idx_itp_records_comp
+                ON itp_records(component_id);
+
+            CREATE TABLE IF NOT EXISTS batches (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                batch_no TEXT UNIQUE NOT NULL,
+                status TEXT DEFAULT 'DRAFT',
+                total_weight_kg NUMERIC(12,2),
+                handover_date TEXT,
+                receiver_name TEXT,
+                receiver_company TEXT,
+                notes TEXT,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS batch_items (
+                batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+                component_id INTEGER NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+                quantity INTEGER DEFAULT 1,
+                PRIMARY KEY (batch_id, component_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS materials (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+                heat_no TEXT NOT NULL,
+                grade TEXT,
+                supplier TEXT,
+                origin TEXT,
+                cert_no TEXT,
+                test_date TEXT,
+                chemical TEXT,
+                mechanical TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(project_id, heat_no)
+            );
+
+            CREATE TABLE IF NOT EXISTS material_assignments (
+                material_id INTEGER NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
+                component_id INTEGER NOT NULL REFERENCES components(id) ON DELETE CASCADE,
+                assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                assigned_by TEXT,
+                PRIMARY KEY (material_id, component_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS share_tokens (
+                token TEXT PRIMARY KEY,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                label TEXT,
+                expires_at TIMESTAMP,
+                password_hash TEXT,
+                view_count INTEGER DEFAULT 0,
+                last_viewed_at TIMESTAMP,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS qc_reports (
+                id SERIAL PRIMARY KEY,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                component_id INTEGER REFERENCES components(id) ON DELETE CASCADE,
+                report_type TEXT NOT NULL,
+                report_date TEXT,
+                inspector TEXT,
+                result TEXT,
+                rfi_no TEXT,
+                data_json TEXT NOT NULL,
+                source_file TEXT,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_qcrep_proj
+                ON qc_reports(project_id, report_type);
+            CREATE INDEX IF NOT EXISTS idx_qcrep_comp
+                ON qc_reports(component_id);
+            CREATE INDEX IF NOT EXISTS idx_qcrep_date
+                ON qc_reports(report_date DESC);
             """
         else:
             schema = """
@@ -363,6 +511,170 @@ class DB:
                 ON audit_log(ts DESC);
             CREATE INDEX IF NOT EXISTS idx_comments_comp
                 ON comments(component_id, ts DESC);
+
+            CREATE TABLE IF NOT EXISTS ncrs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                component_id INTEGER,
+                ncr_no TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                severity TEXT DEFAULT 'MEDIUM',
+                status TEXT DEFAULT 'OPEN',
+                deadline TEXT,
+                raised_by TEXT,
+                resolved_by TEXT,
+                resolved_at TEXT,
+                root_cause TEXT,
+                corrective_action TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_ncr_proj_status
+                ON ncrs(project_id, status);
+            CREATE INDEX IF NOT EXISTS idx_ncr_no
+                ON ncrs(ncr_no);
+
+            CREATE TABLE IF NOT EXISTS rfis (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                component_id INTEGER,
+                rfi_no TEXT UNIQUE NOT NULL,
+                inspection_type TEXT NOT NULL,
+                proposed_date TEXT NOT NULL,
+                confirmed_date TEXT,
+                status TEXT DEFAULT 'SUBMITTED',
+                submitted_by TEXT,
+                response_note TEXT,
+                is_hold_point INTEGER DEFAULT 0,
+                witness_required TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_rfis_proj_status
+                ON rfis(project_id, status);
+            CREATE INDEX IF NOT EXISTS idx_rfis_no ON rfis(rfi_no);
+
+            CREATE TABLE IF NOT EXISTS itp_templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER,
+                name TEXT NOT NULL,
+                component_type TEXT,
+                checkpoints TEXT NOT NULL,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS itp_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                component_id INTEGER NOT NULL,
+                template_id INTEGER,
+                checkpoint_seq INTEGER NOT NULL,
+                checkpoint_name TEXT NOT NULL,
+                hold_type TEXT,
+                result TEXT,
+                inspector TEXT,
+                inspected_at TEXT,
+                witness_by TEXT,
+                witness_at TEXT,
+                remarks TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(component_id, checkpoint_seq),
+                FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE,
+                FOREIGN KEY (template_id) REFERENCES itp_templates(id) ON DELETE SET NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_itp_records_comp
+                ON itp_records(component_id);
+
+            CREATE TABLE IF NOT EXISTS batches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                batch_no TEXT UNIQUE NOT NULL,
+                status TEXT DEFAULT 'DRAFT',
+                total_weight_kg REAL,
+                handover_date TEXT,
+                receiver_name TEXT,
+                receiver_company TEXT,
+                notes TEXT,
+                created_by TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS batch_items (
+                batch_id INTEGER NOT NULL,
+                component_id INTEGER NOT NULL,
+                quantity INTEGER DEFAULT 1,
+                PRIMARY KEY (batch_id, component_id),
+                FOREIGN KEY (batch_id) REFERENCES batches(id) ON DELETE CASCADE,
+                FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS materials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER,
+                heat_no TEXT NOT NULL,
+                grade TEXT,
+                supplier TEXT,
+                origin TEXT,
+                cert_no TEXT,
+                test_date TEXT,
+                chemical TEXT,
+                mechanical TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(project_id, heat_no),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS material_assignments (
+                material_id INTEGER NOT NULL,
+                component_id INTEGER NOT NULL,
+                assigned_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                assigned_by TEXT,
+                PRIMARY KEY (material_id, component_id),
+                FOREIGN KEY (material_id) REFERENCES materials(id) ON DELETE CASCADE,
+                FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS share_tokens (
+                token TEXT PRIMARY KEY,
+                project_id INTEGER NOT NULL,
+                label TEXT,
+                expires_at TEXT,
+                password_hash TEXT,
+                view_count INTEGER DEFAULT 0,
+                last_viewed_at TEXT,
+                created_by TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS qc_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                component_id INTEGER,
+                report_type TEXT NOT NULL,
+                report_date TEXT,
+                inspector TEXT,
+                result TEXT,
+                rfi_no TEXT,
+                data_json TEXT NOT NULL,
+                source_file TEXT,
+                created_by TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (component_id) REFERENCES components(id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_qcrep_proj
+                ON qc_reports(project_id, report_type);
+            CREATE INDEX IF NOT EXISTS idx_qcrep_comp
+                ON qc_reports(component_id);
+            CREATE INDEX IF NOT EXISTS idx_qcrep_date
+                ON qc_reports(report_date DESC);
             """
         self.conn.executescript(schema)
         self.conn.commit()
@@ -565,6 +877,7 @@ class DB:
             "WHERE component_id=? AND result='PASS'",
             (cid,),
         ).fetchall()
+
         passed_types = {r["inspection_type"] for r in passed_rows}
         if itype in ACCEPTANCE_TYPES and ACCEPTANCE_TYPES.issubset(passed_types):
             new_status = "ACCEPTED"
@@ -616,3 +929,418 @@ class DB:
             )
             params = [pid, limit]
         return self.conn.execute(q, params).fetchall()
+
+    # ------------------------------------------------------------------
+    # QC REPORTS (Dimension / Welding / Paint)
+    # ------------------------------------------------------------------
+    def add_qc_report(self, pid, component_id, report_type, report_date,
+                      inspector, result, data, rfi_no=None, source_file=None,
+                      created_by=None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO qc_reports("
+            "project_id, component_id, report_type, report_date, inspector, "
+            "result, rfi_no, data_json, source_file, created_by"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (pid, component_id, report_type.upper(), report_date, inspector,
+             result, rfi_no,
+             json.dumps(data or {}, ensure_ascii=False, default=str),
+             source_file, created_by),
+        )
+        return cur.lastrowid
+
+    def list_qc_reports(self, pid, report_type=None, component_id=None,
+                        date_from=None, date_to=None, limit=500):
+        sql = (
+            "SELECT r.id, r.report_type, r.report_date, r.inspector, r.result, "
+            "r.rfi_no, r.data_json, r.source_file, r.created_by, r.created_at, "
+            "r.component_id, c.code AS component_code "
+            "FROM qc_reports r "
+            "LEFT JOIN components c ON c.id = r.component_id "
+            "WHERE r.project_id=? "
+        )
+        params = [pid]
+        if report_type:
+            sql += "AND r.report_type=? "
+            params.append(report_type.upper())
+        if component_id is not None:
+            sql += "AND r.component_id=? "
+            params.append(component_id)
+        if date_from:
+            sql += "AND r.report_date >= ? "
+            params.append(date_from)
+        if date_to:
+            sql += "AND r.report_date <= ? "
+            params.append(date_to)
+        sql += "ORDER BY r.report_date DESC, r.id DESC LIMIT ?"
+        params.append(limit)
+        return self.conn.execute(sql, tuple(params)).fetchall()
+
+    def get_qc_report(self, rid):
+        return self.conn.execute("SELECT * FROM qc_reports WHERE id=?", (rid,)).fetchone()
+
+    def update_qc_report(self, rid, **fields):
+        allowed = {"report_date","inspector","result","rfi_no","data_json","source_file"}
+        if "data" in fields:
+            fields["data_json"] = json.dumps(fields.pop("data") or {}, ensure_ascii=False, default=str)
+        sets, params = [], []
+        for k, v in fields.items():
+            if k not in allowed: continue
+            sets.append(f"{k}=?"); params.append(v)
+        if not sets: return
+        params.append(rid)
+        self.conn.execute(f"UPDATE qc_reports SET {', '.join(sets)} WHERE id=?", tuple(params))
+
+    def delete_qc_report(self, rid):
+        self.conn.execute("DELETE FROM qc_reports WHERE id=?", (rid,))
+
+    def count_qc_reports(self, pid) -> dict:
+        rows = self.conn.execute(
+            "SELECT report_type, COUNT(*) AS n FROM qc_reports "
+            "WHERE project_id=? GROUP BY report_type", (pid,),
+        ).fetchall()
+        out = {"DIMENSION": 0, "WELDING": 0, "PAINT": 0}
+        for r in rows: out[r["report_type"]] = r["n"]
+        return out
+
+    # ------------------------------------------------------------------
+    # NCR
+    # ------------------------------------------------------------------
+    def add_ncr(self, pid, ncr_no, title, description="", component_id=None,
+                severity="MEDIUM", deadline=None, raised_by=None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO ncrs(project_id, component_id, ncr_no, title, description, "
+            "severity, deadline, raised_by, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'OPEN')",
+            (pid, component_id, ncr_no, title, description,
+             severity.upper(), deadline, raised_by),
+        )
+        return cur.lastrowid
+
+    def list_ncrs(self, pid, status=None, severity=None, limit=500):
+        sql = ("SELECT n.id, n.ncr_no, n.title, n.description, n.severity, "
+               "n.status, n.deadline, n.raised_by, n.resolved_by, n.resolved_at, "
+               "n.root_cause, n.corrective_action, n.created_at, "
+               "n.component_id, c.code AS component_code "
+               "FROM ncrs n LEFT JOIN components c ON c.id = n.component_id "
+               "WHERE n.project_id=? ")
+        params = [pid]
+        if status: sql += "AND n.status=? "; params.append(status.upper())
+        if severity: sql += "AND n.severity=? "; params.append(severity.upper())
+        sql += "ORDER BY n.created_at DESC LIMIT ?"
+        params.append(limit)
+        return self.conn.execute(sql, tuple(params)).fetchall()
+
+    def update_ncr_status(self, ncr_id, new_status, resolved_by=None,
+                          root_cause=None, corrective_action=None):
+        new_status = new_status.upper()
+        params = [new_status]
+        sets = ["status=?"]
+        if root_cause is not None: sets.append("root_cause=?"); params.append(root_cause)
+        if corrective_action is not None:
+            sets.append("corrective_action=?"); params.append(corrective_action)
+        if new_status in ("RESOLVED", "CLOSED"):
+            sets.append("resolved_by=?"); params.append(resolved_by or "")
+            if self.is_postgres: sets.append("resolved_at=CURRENT_TIMESTAMP")
+            else: sets.append("resolved_at=datetime('now')")
+        params.append(ncr_id)
+        self.conn.execute(f"UPDATE ncrs SET {', '.join(sets)} WHERE id=?", tuple(params))
+
+    def delete_ncr(self, ncr_id):
+        self.conn.execute("DELETE FROM ncrs WHERE id=?", (ncr_id,))
+
+    def count_ncrs_by_status(self, pid) -> dict:
+        rows = self.conn.execute(
+            "SELECT status, COUNT(*) AS n FROM ncrs WHERE project_id=? GROUP BY status", (pid,),
+        ).fetchall()
+        out = {"OPEN": 0, "IN_REVIEW": 0, "RESOLVED": 0, "CLOSED": 0}
+        for r in rows: out[r["status"]] = r["n"]
+        return out
+
+    def get_next_ncr_no(self, pid) -> str:
+        from datetime import datetime
+        year = datetime.now().year
+        prefix = f"NCR-{year}-"
+        row = self.conn.execute(
+            "SELECT COUNT(*) c FROM ncrs WHERE project_id=? AND ncr_no LIKE ?",
+            (pid, f"{prefix}%"),
+        ).fetchone()
+        return f"{prefix}{(row['c'] if row else 0) + 1:03d}"
+
+    # ------------------------------------------------------------------
+    # RFI (Request for Inspection)
+    # ------------------------------------------------------------------
+    def get_next_rfi_no(self, pid: int, project_code: str) -> str:
+        from datetime import datetime
+        today = datetime.now().strftime("%Y%m%d")
+        prefix = f"RFI-{project_code}-{today}-"
+        row = self.conn.execute(
+            "SELECT COUNT(*) c FROM rfis WHERE project_id=? AND rfi_no LIKE ?",
+            (pid, f"{prefix}%"),
+        ).fetchone()
+        return f"{prefix}{(row['c'] if row else 0) + 1:03d}"
+
+    def add_rfi(self, pid, component_id, rfi_no, inspection_type, proposed_date,
+                submitted_by=None, is_hold_point=0, witness_required=None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO rfis(project_id, component_id, rfi_no, inspection_type, "
+            "proposed_date, submitted_by, is_hold_point, witness_required, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'SUBMITTED')",
+            (pid, component_id, rfi_no, inspection_type, proposed_date,
+             submitted_by, int(is_hold_point), witness_required),
+        )
+        return cur.lastrowid
+
+    def list_rfis(self, pid, status=None, limit=500):
+        sql = ("SELECT r.id, r.rfi_no, r.inspection_type, r.proposed_date, "
+               "r.confirmed_date, r.status, r.submitted_by, r.response_note, "
+               "r.is_hold_point, r.witness_required, r.created_at, "
+               "r.component_id, c.code AS component_code "
+               "FROM rfis r LEFT JOIN components c ON c.id = r.component_id "
+               "WHERE r.project_id=? ")
+        params = [pid]
+        if status: sql += "AND r.status=? "; params.append(status.upper())
+        sql += "ORDER BY r.created_at DESC LIMIT ?"
+        params.append(limit)
+        return self.conn.execute(sql, tuple(params)).fetchall()
+
+    def update_rfi_status(self, rfi_id, new_status, confirmed_date=None,
+                          response_note=None):
+        new_status = new_status.upper()
+        params = [new_status]
+        sets = ["status=?"]
+        if confirmed_date is not None:
+            sets.append("confirmed_date=?"); params.append(confirmed_date)
+        if response_note is not None:
+            sets.append("response_note=?"); params.append(response_note)
+        if self.is_postgres: sets.append("updated_at=CURRENT_TIMESTAMP")
+        else: sets.append("updated_at=datetime('now')")
+        params.append(rfi_id)
+        self.conn.execute(f"UPDATE rfis SET {', '.join(sets)} WHERE id=?", tuple(params))
+
+    def count_rfis_by_status(self, pid) -> dict:
+        rows = self.conn.execute(
+            "SELECT status, COUNT(*) AS n FROM rfis WHERE project_id=? GROUP BY status", (pid,),
+        ).fetchall()
+        out = {"SUBMITTED": 0, "CONFIRMED": 0, "REJECTED": 0,
+               "IN_PROGRESS": 0, "COMPLETED": 0, "CLOSED": 0}
+        for r in rows: out[r["status"]] = r["n"]
+        return out
+
+    # ------------------------------------------------------------------
+    # ITP (Inspection Test Plan)
+    # ------------------------------------------------------------------
+    def add_itp_template(self, pid, name, component_type, checkpoints) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO itp_templates(project_id, name, component_type, checkpoints) "
+            "VALUES (?, ?, ?, ?)",
+            (pid, name, component_type,
+             json.dumps(checkpoints, ensure_ascii=False)),
+        )
+        return cur.lastrowid
+
+    def list_itp_templates(self, pid, only_active=True):
+        sql = "SELECT * FROM itp_templates WHERE project_id=?"
+        params = [pid]
+        if only_active:
+            sql += " AND is_active=1"
+        sql += " ORDER BY name"
+        return self.conn.execute(sql, tuple(params)).fetchall()
+
+    def get_itp_template(self, tid):
+        return self.conn.execute(
+            "SELECT * FROM itp_templates WHERE id=?", (tid,),
+        ).fetchone()
+
+    def upsert_itp_record(self, component_id, template_id, checkpoint_seq,
+                          checkpoint_name, hold_type, result, inspector,
+                          remarks="", witness_by=None, witness_at=None) -> int:
+        """Upsert. SQLite syntax (Postgres handle qua adapter ?→%s + ON CONFLICT)."""
+        # Try update
+        ex = self.conn.execute(
+            "SELECT id FROM itp_records WHERE component_id=? AND checkpoint_seq=?",
+            (component_id, checkpoint_seq),
+        ).fetchone()
+        now_expr = "CURRENT_TIMESTAMP" if self.is_postgres else "datetime('now')"
+        if ex:
+            self.conn.execute(
+                f"UPDATE itp_records SET template_id=?, checkpoint_name=?, "
+                f"hold_type=?, result=?, inspector=?, inspected_at={now_expr}, "
+                f"remarks=?, witness_by=?, witness_at=? WHERE id=?",
+                (template_id, checkpoint_name, hold_type, result, inspector,
+                 remarks, witness_by, witness_at, ex["id"]),
+            )
+            return ex["id"]
+        cur = self.conn.execute(
+            f"INSERT INTO itp_records(component_id, template_id, checkpoint_seq, "
+            f"checkpoint_name, hold_type, result, inspector, inspected_at, remarks, "
+            f"witness_by, witness_at) "
+            f"VALUES (?, ?, ?, ?, ?, ?, ?, {now_expr}, ?, ?, ?)",
+            (component_id, template_id, checkpoint_seq, checkpoint_name,
+             hold_type, result, inspector, remarks, witness_by, witness_at),
+        )
+        return cur.lastrowid
+
+    def list_itp_records(self, component_id):
+        return self.conn.execute(
+            "SELECT * FROM itp_records WHERE component_id=? "
+            "ORDER BY checkpoint_seq ASC", (component_id,),
+        ).fetchall()
+
+    def witness_itp_record(self, component_id, checkpoint_seq, witness_by) -> bool:
+        now_expr = "CURRENT_TIMESTAMP" if self.is_postgres else "datetime('now')"
+        cur = self.conn.execute(
+            f"UPDATE itp_records SET result='PASS', witness_by=?, "
+            f"witness_at={now_expr} "
+            f"WHERE component_id=? AND checkpoint_seq=? AND result='HOLD_WAITING'",
+            (witness_by, component_id, checkpoint_seq),
+        )
+        return cur.rowcount > 0 if hasattr(cur, "rowcount") else True
+
+    # ------------------------------------------------------------------
+    # BATCHES (handover)
+    # ------------------------------------------------------------------
+    def get_next_batch_no(self, pid, project_code) -> str:
+        from datetime import datetime
+        today = datetime.now().strftime("%Y%m%d")
+        prefix = f"BG-{project_code}-{today}-"
+        row = self.conn.execute(
+            "SELECT COUNT(*) c FROM batches WHERE project_id=? AND batch_no LIKE ?",
+            (pid, f"{prefix}%"),
+        ).fetchone()
+        return f"{prefix}{(row['c'] if row else 0) + 1:03d}"
+
+    def add_batch(self, pid, batch_no, total_weight_kg=None, notes=None,
+                  created_by=None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO batches(project_id, batch_no, status, total_weight_kg, "
+            "notes, created_by) VALUES (?, ?, 'DRAFT', ?, ?, ?)",
+            (pid, batch_no, total_weight_kg, notes, created_by),
+        )
+        return cur.lastrowid
+
+    def add_batch_items(self, batch_id, component_ids, quantities=None) -> int:
+        n = 0
+        for i, cid in enumerate(component_ids):
+            qty = (quantities[i] if quantities and i < len(quantities) else 1)
+            try:
+                self.conn.execute(
+                    "INSERT INTO batch_items(batch_id, component_id, quantity) "
+                    "VALUES (?, ?, ?)", (batch_id, cid, qty),
+                )
+                n += 1
+            except Exception:
+                pass
+        return n
+
+    def list_batches(self, pid, status=None, limit=200):
+        sql = "SELECT * FROM batches WHERE project_id=? "
+        params = [pid]
+        if status: sql += "AND status=? "; params.append(status.upper())
+        sql += "ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        return self.conn.execute(sql, tuple(params)).fetchall()
+
+    def list_batch_items(self, batch_id):
+        return self.conn.execute(
+            "SELECT bi.batch_id, bi.component_id, bi.quantity, "
+            "c.code AS component_code, c.status, c.data_json "
+            "FROM batch_items bi JOIN components c ON c.id = bi.component_id "
+            "WHERE bi.batch_id=? ORDER BY c.code", (batch_id,),
+        ).fetchall()
+
+    def update_batch_status(self, batch_id, new_status, handover_date=None,
+                            receiver_name=None, receiver_company=None):
+        sets = ["status=?"]
+        params = [new_status.upper()]
+        if handover_date is not None:
+            sets.append("handover_date=?"); params.append(handover_date)
+        if receiver_name is not None:
+            sets.append("receiver_name=?"); params.append(receiver_name)
+        if receiver_company is not None:
+            sets.append("receiver_company=?"); params.append(receiver_company)
+        params.append(batch_id)
+        self.conn.execute(f"UPDATE batches SET {', '.join(sets)} WHERE id=?", tuple(params))
+
+    # ------------------------------------------------------------------
+    # MATERIALS
+    # ------------------------------------------------------------------
+    def add_material(self, pid, heat_no, grade=None, supplier=None,
+                     origin=None, cert_no=None, test_date=None,
+                     chemical=None, mechanical=None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO materials(project_id, heat_no, grade, supplier, origin, "
+            "cert_no, test_date, chemical, mechanical) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (pid, heat_no, grade, supplier, origin, cert_no, test_date,
+             json.dumps(chemical or {}, ensure_ascii=False) if chemical else None,
+             json.dumps(mechanical or {}, ensure_ascii=False) if mechanical else None),
+        )
+        return cur.lastrowid
+
+    def list_materials(self, pid, limit=500):
+        return self.conn.execute(
+            "SELECT * FROM materials WHERE project_id=? ORDER BY heat_no LIMIT ?",
+            (pid, limit),
+        ).fetchall()
+
+    def find_material(self, pid, heat_no):
+        return self.conn.execute(
+            "SELECT * FROM materials WHERE project_id=? AND heat_no=?",
+            (pid, heat_no),
+        ).fetchone()
+
+    def assign_material(self, material_id, component_id, assigned_by=None) -> bool:
+        try:
+            self.conn.execute(
+                "INSERT INTO material_assignments(material_id, component_id, assigned_by) "
+                "VALUES (?, ?, ?)", (material_id, component_id, assigned_by),
+            )
+            return True
+        except Exception:
+            return False
+
+    def list_material_for_component(self, component_id):
+        return self.conn.execute(
+            "SELECT m.* FROM materials m "
+            "JOIN material_assignments ma ON ma.material_id = m.id "
+            "WHERE ma.component_id=?", (component_id,),
+        ).fetchall()
+
+    def list_components_for_material(self, material_id):
+        return self.conn.execute(
+            "SELECT c.id, c.code, c.status FROM components c "
+            "JOIN material_assignments ma ON ma.component_id = c.id "
+            "WHERE ma.material_id=? ORDER BY c.code", (material_id,),
+        ).fetchall()
+
+    # ------------------------------------------------------------------
+    # SHARE TOKENS (Client Portal)
+    # ------------------------------------------------------------------
+    def add_share_token(self, token, pid, label=None, expires_at=None,
+                        password_hash=None, created_by=None):
+        self.conn.execute(
+            "INSERT INTO share_tokens(token, project_id, label, expires_at, "
+            "password_hash, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+            (token, pid, label, expires_at, password_hash, created_by),
+        )
+
+    def get_share_token(self, token):
+        return self.conn.execute(
+            "SELECT * FROM share_tokens WHERE token=?", (token,),
+        ).fetchone()
+
+    def increment_share_view(self, token):
+        now_expr = "CURRENT_TIMESTAMP" if self.is_postgres else "datetime('now')"
+        self.conn.execute(
+            f"UPDATE share_tokens SET view_count=view_count+1, "
+            f"last_viewed_at={now_expr} WHERE token=?", (token,),
+        )
+
+    def list_share_tokens(self, pid):
+        return self.conn.execute(
+            "SELECT token, label, expires_at, view_count, last_viewed_at, "
+            "created_by, created_at FROM share_tokens WHERE project_id=? "
+            "ORDER BY created_at DESC", (pid,),
+        ).fetchall()
+
+    def delete_share_token(self, token):
+        self.conn.execute("DELETE FROM share_tokens WHERE token=?", (token,))

@@ -227,6 +227,117 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# === Quick-nav chips: nhảy nhanh đến section ===
+st.markdown(
+    """
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0 0;">
+      <a href="#chi-so-kiem-tra" style="background:#F1F5F9;color:#0F1E40;
+         padding:5px 14px;border-radius:14px;font-size:13px;font-weight:600;
+         text-decoration:none;border:1px solid #CBD5E1;">📊 KPI</a>
+      <a href="#thong-ke-chi-tiet-theo-xuong" style="background:#FEF3C7;color:#7C2D12;
+         padding:5px 14px;border-radius:14px;font-size:13px;font-weight:600;
+         text-decoration:none;border:1px solid #FCD34D;">🏭 Theo xưởng</a>
+      <a href="#nang-suat-inspection-theo-thoi-gian" style="background:#DBEAFE;color:#1E40AF;
+         padding:5px 14px;border-radius:14px;font-size:13px;font-weight:600;
+         text-decoration:none;border:1px solid #93C5FD;">📈 Chart trend</a>
+      <a href="#hieu-suat-inspector" style="background:#DCFCE7;color:#166534;
+         padding:5px 14px;border-radius:14px;font-size:13px;font-weight:600;
+         text-decoration:none;border:1px solid #86EFAC;">👤 Inspector</a>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.write("")
+
+# ============================================================
+# 🔮 FORECAST & S-CURVE (P2.8) — velocity + ETA + cumulative chart
+# ============================================================
+try:
+    from streamlit_qc.services import forecast_service as _fc
+
+    @st.cache_data(ttl=120, show_spinner=False)
+    def _forecast_cached(_db, pid_in: int):
+        return _fc.get_forecast(_db, pid_in)
+
+    @st.cache_data(ttl=120, show_spinner=False)
+    def _scurve_cached(_db, pid_in: int, days: int):
+        return _fc.get_scurve(_db, pid_in, days)
+
+    forecast = _forecast_cached(db, pid)
+
+    st.markdown(
+        '<div class="section-title">🔮 Dự báo tiến độ & S-Curve</div>',
+        unsafe_allow_html=True,
+    )
+
+    fc1, fc2, fc3, fc4 = st.columns(4)
+    fc1.metric(
+        "⚡ Velocity (tuần)",
+        f"{forecast.velocity_per_week:.1f} CK",
+        help="Trung bình số CK ACCEPTED/tuần trong 4 tuần qua",
+    )
+    eta_label = f"{forecast.eta_days} ngày" if forecast.eta_days is not None else "—"
+    eta_delta = forecast.eta_date if forecast.eta_date else None
+    fc2.metric(
+        "🎯 ETA hoàn thành",
+        eta_label,
+        delta=eta_delta,
+        delta_color="off",
+        help=(
+            "Số ngày dự kiến hoàn thành toàn bộ project theo velocity hiện tại."
+            "Để 0 nghĩa là đã hoàn thành 100%."
+        ),
+    )
+    lead = forecast.avg_lead_time_days
+    fc3.metric(
+        "⏱️ Lead time TB",
+        f"{lead:.1f} ngày" if lead is not None else "—",
+        help="Trung bình ngày từ Fit-up PASS → Final PASS (cấu kiện ACCEPTED)",
+    )
+    fc4.metric(
+        "📦 Còn lại",
+        f"{forecast.total_components - forecast.done_components:,} CK",
+        help="Số cấu kiện chưa ACCEPTED",
+    )
+
+    # S-curve chart
+    sdata = _scurve_cached(db, pid, 90)
+    if sdata:
+        import plotly.graph_objects as _pgo
+        dates = [d["date"] for d in sdata]
+        pcts = [d["cum_pct"] for d in sdata]
+        nbrs = [d["cumulative"] for d in sdata]
+
+        fig_s = _pgo.Figure()
+        fig_s.add_trace(_pgo.Scatter(
+            x=dates, y=pcts, mode="lines+markers", name="Actual %",
+            line=dict(color="#0F1E40", width=3),
+            marker=dict(size=6, color="#D4A744"),
+            fill="tozeroy", fillcolor="rgba(15,30,64,0.08)",
+            customdata=nbrs,
+            hovertemplate="<b>%{x}</b><br>%{y:.1f}%<br>%{customdata} CK<extra></extra>",
+        ))
+        # Today marker
+        import datetime as _dtdt
+        fig_s.add_vline(
+            x=_dtdt.date.today().isoformat(),
+            line_dash="dash", line_color="#94A3B8",
+            annotation_text="Hôm nay", annotation_position="top",
+        )
+        fig_s.update_layout(
+            title="S-Curve: % ACCEPTED tích luỹ theo ngày (90 ngày qua)",
+            xaxis_title="Ngày", yaxis_title="% Hoàn thành",
+            height=320, margin=dict(l=10, r=10, t=40, b=10),
+            yaxis=dict(range=[0, 100]),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_s, use_container_width=True)
+    else:
+        st.caption("Chưa đủ dữ liệu inspection để vẽ S-curve.")
+except Exception as _fc_err:
+    st.caption(f"⚠️ Forecast service: {_fc_err}")
+
 st.write("")
 
 # ============================================================

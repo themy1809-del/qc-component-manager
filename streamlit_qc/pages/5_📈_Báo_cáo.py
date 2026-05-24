@@ -102,9 +102,129 @@ with ec3:
 
 st.divider()
 
-min_d, max_d = report_service.get_inspection_date_range(db, pid)
+# ============================================================
+# 📄 PDF BIÊN BẢN NGHIỆM THU — chọn cấu kiện và xuất hàng loạt
+# ============================================================
+st.markdown(
+    '<div style="background:linear-gradient(135deg,#7B1E1E,#A02828);'
+    'padding:14px 18px;border-radius:10px;color:#fff;margin-bottom:10px;">'
+    '<div style="font-size:14px;font-weight:700;">📄 PDF Biên bản nghiệm thu</div>'
+    '<div style="font-size:12px;color:rgba(255,255,255,0.85);margin-top:4px;">'
+    'Xuất biên bản nghiệm thu (đơn lẻ hoặc bulk) — định dạng PDF in giấy ký tay'
+    '</div></div>',
+    unsafe_allow_html=True,
+)
 
-if min_d is None:
+from streamlit_qc.services import pdf_service as _pdf
+
+pdf_mode = st.radio(
+    "Cách chọn cấu kiện:",
+    ["Theo trạng thái", "Nhập danh sách mã", "Top N gần nhất"],
+    horizontal=True,
+    key="_pdf_mode",
+)
+
+pdf_comp_ids: list[int] = []
+
+if pdf_mode == "Theo trạng thái":
+    from streamlit_qc.core.constants import ALL_STATUSES, STATUS_LABELS
+    cps1, cps2 = st.columns([2, 1])
+    sts_pick = cps1.multiselect(
+        "Lọc trạng thái",
+        ALL_STATUSES,
+        default=["ACCEPTED", "PASSED"],
+        format_func=lambda s: STATUS_LABELS.get(s, s),
+        key="_pdf_sts",
+    )
+    pdf_limit = cps2.number_input("Tối đa", 1, 500, 50, key="_pdf_limit_s")
+    if sts_pick:
+        placeholders = ",".join("?" * len(sts_pick))
+        rows = db.conn.execute(
+            f"SELECT id FROM components WHERE project_id=? AND status IN ({placeholders}) "
+            f"ORDER BY code LIMIT ?",
+            (pid, *sts_pick, int(pdf_limit)),
+        ).fetchall()
+        pdf_comp_ids = [r["id"] for r in rows]
+
+elif pdf_mode == "Nhập danh sách mã":
+    codes_text = st.text_area(
+        "Danh sách mã (mỗi dòng 1 mã)",
+        height=100,
+        placeholder="ABC-001\nABC-002\n...",
+        key="_pdf_codes",
+    )
+    codes = [c.strip() for c in codes_text.split("\n") if c.strip()]
+    if codes:
+        placeholders = ",".join("?" * len(codes))
+        rows = db.conn.execute(
+            f"SELECT id FROM components WHERE project_id=? AND code IN ({placeholders})",
+            (pid, *codes),
+        ).fetchall()
+        pdf_comp_ids = [r["id"] for r in rows]
+
+else:  # Top N
+    pdf_topn = st.number_input("Số cấu kiện gần nhất", 1, 200, 20, key="_pdf_topn")
+    rows = db.conn.execute(
+        "SELECT id FROM components WHERE project_id=? ORDER BY id DESC LIMIT ?",
+        (pid, int(pdf_topn)),
+    ).fetchall()
+    pdf_comp_ids = [r["id"] for r in rows]
+
+cpdf1, cpdf2, cpdf3 = st.columns(3)
+qc_signoff = cpdf1.text_input(
+    "Nhà thầu (QC Đại Dũng) ký",
+    value="", placeholder="Nguyễn Văn A", key="_pdf_qc",
+)
+consult_signoff = cpdf2.text_input(
+    "Tư vấn giám sát ký",
+    value="", placeholder="(tuỳ chọn)", key="_pdf_consult",
+)
+cust_signoff = cpdf3.text_input(
+    "Chủ đầu tư ký",
+    value="", placeholder="(tuỳ chọn)", key="_pdf_cust",
+)
+
+cbtn1, cbtn2 = st.columns([2, 3])
+if cbtn1.button(
+    f"📄 Tạo PDF ({len(pdf_comp_ids)} cấu kiện)",
+    type="primary",
+    disabled=(len(pdf_comp_ids) == 0),
+    use_container_width=True,
+    key="_btn_make_pdf",
+):
+    try:
+        with st.spinner(f"Đang tạo PDF cho {len(pdf_comp_ids)} cấu kiện..."):
+            pdf_bytes = _pdf.generate_certificate(
+                db, pid, pdf_comp_ids,
+                inspector_signoff=qc_signoff,
+                customer_signoff=cust_signoff,
+                consultant_signoff=consult_signoff,
+            )
+        st.session_state["_pdf_bytes"] = pdf_bytes
+        st.session_state["_pdf_name"] = (
+            f"BienBanNT_{proj['code']}_{len(pdf_comp_ids)}cks_"
+            f"{dt.date.today():%Y%m%d}.pdf"
+        )
+        st.success(f"✅ PDF {len(pdf_bytes):,} bytes — {len(pdf_comp_ids)} cấu kiện.")
+    except Exception as e:
+        st.error(f"Lỗi tạo PDF: {e}")
+
+if "_pdf_bytes" in st.session_state:
+    cbtn2.download_button(
+        f"⬇️ Tải PDF — {st.session_state.get('_pdf_name', 'BienBanNT.pdf')}",
+        st.session_state["_pdf_bytes"],
+        file_name=st.session_state["_pdf_name"],
+        mime="application/pdf",
+        use_container_width=True,
+        key="_btn_dl_pdf",
+    )
+
+st.divider()
+
+min_d, max_d = report_service.get_inspection_date_range(db, pid)
+has_any = report_service.has_any_inspection(db, pid)
+
+if not has_any:
     st.info("Chưa có inspection nào. Vào **Import Daily** để nạp file.")
     try:
         excel_bytes = report_service.export_to_excel(db, pid, proj["code"])
@@ -114,6 +234,14 @@ if min_d is None:
     except Exception as e:
         st.error(f"Lỗi: {e}")
     st.stop()
+
+# BUG FIX: nếu có inspection nhưng date không parseable → fallback today
+if min_d is None:
+    min_d = max_d = dt.date.today()
+    st.warning(
+        "⚠️ Dự án có inspection nhưng phần lớn chưa có ngày kiểm tra. "
+        "Báo cáo có thể không đầy đủ — hãy bổ sung ngày cho các record."
+    )
 
 default_from = max(min_d, dt.date.today() - dt.timedelta(days=90))
 c1, c2, c3 = st.columns([2, 2, 2])
@@ -253,7 +381,6 @@ else:
             st.dataframe(
                 df_cmp_show, use_container_width=True, hide_index=True,
                 column_config={
-                    "Tổng CK": st.column_config.NumberColumn(format="%d"),
                     "Đã NT": st.column_config.NumberColumn(format="%d"),
                     "Tồn đọng": st.column_config.NumberColumn(format="%d"),
                     "FAIL": st.column_config.NumberColumn(format="%d"),
@@ -349,4 +476,6 @@ else:
                 st.metric("⚠ Nhiều overdue", f"{most_overdue['code']}",
                           f"{most_overdue['overdue']} CK", delta_color="inverse")
     elif len(selected_pids) == 1:
+        st.info("Chọn thêm dự án để so sánh (≥ 2).")
+ids) == 1:
         st.info("Chọn thêm dự án để so sánh (≥ 2).")

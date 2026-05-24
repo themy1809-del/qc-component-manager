@@ -64,17 +64,24 @@ def _get_current_page() -> str:
 
 def track_visit(db: DB, page_name: str | None = None) -> None:
     """
-    Ghi 1 visit. Chỉ ghi 1 lần / page change để tránh spam log.
+    Ghi 1 visit. Dedup theo (session, page, giờ) để giảm spam.
+
+    BUG FIX 2026-05: dedup cũ chỉ check (session, page) → mỗi page chỉ log
+    1 lần trong cả session → user truy cập lại sau vài giờ KHÔNG được ghi.
+    Giờ dedup theo (page, hour) → mỗi giờ 1 lần / page.
+    Errors được lưu vào session_state["_access_last_error"] để debug.
     """
+    import time
     try:
         session_id = _get_session_id()
         page = page_name or _get_current_page()
 
-        # Chỉ ghi nếu page khác lần trước (tránh ghi mỗi rerun)
-        last_page = st.session_state.get(LAST_PAGE_KEY)
-        if last_page == page:
+        hour_bucket = int(time.time() // 3600)
+        dedup_key = f"{page}_{hour_bucket}"
+        last_key = st.session_state.get(LAST_PAGE_KEY)
+        if last_key == dedup_key:
             return
-        st.session_state[LAST_PAGE_KEY] = page
+        st.session_state[LAST_PAGE_KEY] = dedup_key
 
         ip, ua = _get_request_info()
         db.conn.execute(
@@ -83,9 +90,37 @@ def track_visit(db: DB, page_name: str | None = None) -> None:
             (session_id, ip, ua, page),
         )
         db.conn.commit()
-    except Exception:
-        # Không bao giờ raise — visitor tracking không được phép break app
-        pass
+    except Exception as e:
+        try:
+            st.session_state["_access_last_error"] = f"{type(e).__name__}: {e}"
+        except Exception:
+            pass
+
+
+def force_test_log(db: DB) -> tuple[bool, str]:
+    """
+    Ghi 1 record test (bypass dedup) để verify hệ thống logging có hoạt động.
+    Trả về (success, message).
+    """
+    try:
+        session_id = _get_session_id()
+        ip, ua = _get_request_info()
+        db.conn.execute(
+            "INSERT INTO access_log (session_id, ip_address, user_agent, page_name) "
+            "VALUES (?, ?, ?, ?)",
+            (session_id, ip or "test", ua or "test-agent", "__TEST__"),
+        )
+        db.conn.commit()
+        cnt = db.conn.execute("SELECT COUNT(*) c FROM access_log").fetchone()
+        total = cnt["c"] if cnt else 0
+        return True, f"OK — đã ghi 1 record. Tổng pageviews: {total}"
+    except Exception as e:
+        return False, f"LỖI: {type(e).__name__}: {e}"
+
+
+def get_last_error() -> str | None:
+    """Lấy error gần nhất khi track_visit gặp lỗi."""
+    return st.session_state.get("_access_last_error")
 
 
 def get_stats_summary(db: DB) -> dict:

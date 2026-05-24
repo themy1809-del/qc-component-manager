@@ -78,6 +78,8 @@ def _build_single_component(
     project: dict,
     inspector_signoff: str = "",
     customer_signoff: str = "",
+    consultant_signoff: str = "",
+    certificate_no: str = "",
 ) -> List:
     """Build flowable list cho 1 cấu kiện. Trả về list paragraph/table/spacer."""
     styles = getSampleStyleSheet()
@@ -123,12 +125,32 @@ def _build_single_component(
     inspections = [dict(r) for r in ins_rows]
 
     # ==========================================================
-    # HEADER — Company + Title
+    # HEADER — Company + Title + Certificate No.
     # ==========================================================
     flow = []
     flow.append(Paragraph("DAI DUNG GROUP - QC DEPARTMENT", style_subtitle))
-    flow.append(Paragraph("BIEN BAN NGHIEM THU CAU KIEN", style_title))
-    flow.append(Paragraph("Component Inspection Certificate", style_subtitle))
+    flow.append(Paragraph("BIEN BAN NGHIEM THU CAU KIEN THEP", style_title))
+    flow.append(Paragraph("Acceptance Record for Steel Components", style_subtitle))
+
+    # Số biên bản theo chuẩn: NT-{project_code}-{YYYYMMDD}-{seq}
+    if not certificate_no:
+        certificate_no = (
+            f"NT-{project.get('code', 'PRJ')}-"
+            f"{datetime.now().strftime('%Y%m%d')}-{cid:04d}"
+        )
+    style_cert_no = ParagraphStyle(
+        "CertNo", parent=styles["Normal"],
+        fontName=DEFAULT_FONT_BOLD, fontSize=11, alignment=TA_CENTER,
+        textColor=NAVY, spaceAfter=4,
+    )
+    flow.append(Paragraph(
+        f"So bien ban / Certificate No.: <b>{certificate_no}</b>",
+        style_cert_no,
+    ))
+    flow.append(Paragraph(
+        f"Ngay lap / Issue date: {datetime.now().strftime('%d/%m/%Y')}",
+        style_subtitle,
+    ))
 
     # ==========================================================
     # PROJECT + COMPONENT INFO (2 cột)
@@ -243,27 +265,37 @@ def _build_single_component(
     # ==========================================================
     flow.append(Paragraph("4. XAC NHAN / Signatures", style_section))
 
+    # 3-column signature theo chuẩn nghiệm thu thép kết cấu VN:
+    # CHỦ ĐẦU TƯ — TƯ VẤN GIÁM SÁT — NHÀ THẦU (QC Đại Dũng)
     sig_data = [
-        ["QC Đại Dũng", "", "Khach hang / Customer"],
+        ["DAI DIEN CHU DAU TU", "TU VAN GIAM SAT", "NHA THAU (QC Dai Dung)"],
+        ["(Owner Representative)", "(Consultant Supervisor)", "(Contractor QC)"],
         ["", "", ""],
         ["", "", ""],
         ["", "", ""],
         [
-            f"_____________________\n{_safe(inspector_signoff, 'Inspector Name')}",
-            "",
-            f"_____________________\n{_safe(customer_signoff, 'Customer Name')}",
+            f"_____________________\n{_safe(customer_signoff, 'Ho ten / Name')}",
+            f"_____________________\n{_safe(consultant_signoff, 'Ho ten / Name')}",
+            f"_____________________\n{_safe(inspector_signoff, 'Ho ten / Name')}",
         ],
-        [f"Date: {datetime.now().strftime('%d/%m/%Y')}", "",
-         f"Date: ____/____/______"],
+        [
+            "Date: ____/____/______",
+            "Date: ____/____/______",
+            f"Date: {datetime.now().strftime('%d/%m/%Y')}",
+        ],
     ]
-    sig_table = Table(sig_data, colWidths=[8*cm, 2.4*cm, 8*cm])
+    col_w = 6.1*cm
+    sig_table = Table(sig_data, colWidths=[col_w, col_w, col_w])
     sig_table.setStyle(TableStyle([
-        ("FONT", (0, 0), (-1, -1), DEFAULT_FONT, 9),
-        ("FONT", (0, 0), (0, 0), DEFAULT_FONT_BOLD, 10),
-        ("FONT", (2, 0), (2, 0), DEFAULT_FONT_BOLD, 10),
+        ("FONT", (0, 0), (-1, -1), DEFAULT_FONT, 8),
+        ("FONT", (0, 0), (-1, 0), DEFAULT_FONT_BOLD, 9),
+        ("FONT", (0, 1), (-1, 1), DEFAULT_FONT, 7),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TEXTCOLOR", (0, 0), (-1, 0), NAVY),
+        ("TEXTCOLOR", (0, 1), (-1, 1), SLATE),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LINEABOVE", (0, 5), (-1, 5), 0, colors.white),  # signature line via underscore
     ]))
     flow.append(sig_table)
 
@@ -287,19 +319,21 @@ def generate_certificate(
     component_ids: list[int],
     inspector_signoff: str = "",
     customer_signoff: str = "",
+    consultant_signoff: str = "",
 ) -> bytes:
     """
-    Tạo PDF biên bản nghiệm thu cho 1 hoặc nhiều cấu kiện.
+    Tạo PDF biên bản nghiệm thu cấu kiện thép — chuẩn VN.
 
     Args:
         db: DB instance.
         pid: project id.
         component_ids: list ID cấu kiện cần xuất.
-        inspector_signoff: tên QC ký.
-        customer_signoff: tên khách hàng ký (optional).
+        inspector_signoff: tên Nhà thầu (QC Đại Dũng) ký.
+        customer_signoff: tên Chủ đầu tư ký.
+        consultant_signoff: tên Tư vấn giám sát ký.
 
     Returns:
-        Bytes của file PDF.
+        Bytes của file PDF — mỗi cấu kiện 1 trang A4.
     """
     project_row = db.conn.execute("SELECT * FROM projects WHERE id=?", (pid,)).fetchone()
     project = dict(project_row) if project_row else {}
@@ -320,6 +354,14 @@ def generate_certificate(
             db, pid, cid, project,
             inspector_signoff=inspector_signoff,
             customer_signoff=customer_signoff,
+            consultant_signoff=consultant_signoff,
+        ))
+
+    doc.build(story)
+    return buffer.getvalue()
+ inspector_signoff=inspector_signoff,
+            customer_signoff=customer_signoff,
+            consultant_signoff=consultant_signoff,
         ))
 
     doc.build(story)
