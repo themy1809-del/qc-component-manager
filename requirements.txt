@@ -6,5 +6,7 @@ pyxlsb>=1.0.10
 xlrd>=2.0.1
 psycopg2-binary>=2.9.9
 reportlab>=4.0.0
-qrcode[pil]>=7.4.2
-pdfplumber>=0.10.0
+qrcode>=7.4.2
+pillow>=10.0.0
+# pdfplumber: optional — bo qua de tranh conflict trong build
+# Mill cert parser se fallback gracefully
