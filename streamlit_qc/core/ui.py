@@ -22,15 +22,26 @@ def render_top_nav(active_page: str = "") -> None:
     from streamlit_qc.core.constants import APP_NAME, APP_VERSION
     from streamlit_qc.core.state import S_CURRENT_USER
 
-    PAGES = [
-        ("home", "🏠 Trang chủ", "app.py"),
+    # 2 hàng: hàng 1 core (7 page), hàng 2 advanced (7 page mới)
+    PAGES_ROW1 = [
+        ("home",     "🏠 Trang chủ", "app.py"),
         ("tongquan", "📊 Tổng quan", "pages/1_📊_Tổng_quan.py"),
-        ("master", "📥 Master", "pages/2_📥_Import_Master.py"),
-        ("daily", "📤 Daily", "pages/3_📤_Import_Daily.py"),
-        ("caukien", "🔧 Cấu kiện", "pages/4_🔧_Cấu_kiện.py"),
-        ("baocao", "📈 Báo cáo", "pages/5_📈_Báo_cáo.py"),
-        ("quantri", "⚙ Quản trị", "pages/6_⚙_Quản_trị.py"),
+        ("master",   "📥 Master",    "pages/2_📥_Import_Master.py"),
+        ("daily",    "📤 Daily",     "pages/3_📤_Import_Daily.py"),
+        ("caukien",  "🔧 Cấu kiện",  "pages/4_🔧_Cấu_kiện.py"),
+        ("baocao",   "📈 Báo cáo",   "pages/5_📈_Báo_cáo.py"),
+        ("quantri",  "⚙ Quản trị",  "pages/6_⚙_Quản_trị.py"),
     ]
+    PAGES_ROW2 = [
+        ("hoso",    "📋 Hồ sơ",     "pages/7_📋_Hồ_sơ.py"),
+        ("ncr",     "🚨 NCR",        "pages/8_🚨_NCR.py"),
+        ("bulkkt",  "⚡ Bulk KT",   "pages/9_⚡_Bulk_KT.py"),
+        ("rfi",     "📨 RFI",        "pages/10_📨_RFI.py"),
+        ("itp",     "📐 ITP",        "pages/11_📐_ITP.py"),
+        ("bangiao", "📦 Bàn giao", "pages/12_📦_Bàn_giao.py"),
+        ("share",   "🔑 Share",     "pages/13_🔑_Share.py"),
+    ]
+    PAGES = PAGES_ROW1  # giữ tên biến cũ cho compat
 
     user = st.session_state.get(S_CURRENT_USER, "qc_user")
     initial = (user[:1] or "Q").upper()
@@ -58,13 +69,23 @@ def render_top_nav(active_page: str = "") -> None:
     )
     st.markdown(top_html, unsafe_allow_html=True)
 
-    cols = st.columns(len(PAGES))
-    for i, (key, label, path) in enumerate(PAGES):
-        with cols[i]:
+    # Hàng 1 — core
+    cols1 = st.columns(len(PAGES_ROW1))
+    for i, (key, label, path) in enumerate(PAGES_ROW1):
+        with cols1[i]:
             try:
                 st.page_link(path, label=label, use_container_width=True)
             except Exception:
                 st.button(label, key=f"nav_{key}", use_container_width=True)
+
+    # Hàng 2 — advanced (Hồ sơ / NCR / Bulk KT / RFI / ITP / Bàn giao / Share)
+    cols2 = st.columns(len(PAGES_ROW2))
+    for i, (key, label, path) in enumerate(PAGES_ROW2):
+        with cols2[i]:
+            try:
+                st.page_link(path, label=label, use_container_width=True)
+            except Exception:
+                st.button(label, key=f"nav2_{key}", use_container_width=True)
 
     st.markdown("<div style='margin-bottom:8px;'></div>", unsafe_allow_html=True)
 
@@ -334,7 +355,6 @@ def quick_action_card(icon, title, description, page_path=None):
         f'<div style="background:{SURFACE};border:1px solid {BORDER};border-radius:12px;'
         f'padding:20px;height:100%;">'
         f'<div style="font-size:32px;margin-bottom:10px;">{icon}</div>'
-        f'<div style="font-size:16px;font-weight:600;color:{NAVY};margin-bottom:4px;">{title}</div>'
         f'<div style="font-size:13px;color:{TEXT_MUTED};line-height:1.45;">{description}</div>'
         f'</div>'
     )
