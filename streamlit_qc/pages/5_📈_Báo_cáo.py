@@ -477,5 +477,3 @@ else:
                           f"{most_overdue['overdue']} CK", delta_color="inverse")
     elif len(selected_pids) == 1:
         st.info("Chọn thêm dự án để so sánh (≥ 2).")
-ids) == 1:
-        st.info("Chọn thêm dự án để so sánh (≥ 2).")

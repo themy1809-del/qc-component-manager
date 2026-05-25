@@ -359,10 +359,3 @@ def generate_certificate(
 
     doc.build(story)
     return buffer.getvalue()
- inspector_signoff=inspector_signoff,
-            customer_signoff=customer_signoff,
-            consultant_signoff=consultant_signoff,
-        ))
-
-    doc.build(story)
-    return buffer.getvalue()
