@@ -194,6 +194,14 @@ def smart_match_columns(
         for h in headers
     ]
 
+    # Loại header có hậu tố "cũ/old/backup/mới/new" cho các field nhận diện chính
+    # (vd: file Bison có "Tên cấu kiện cũ" — chỉ 46 unique values, là drawing parent
+    # KHÔNG phải piece-level code). Tránh smart-match nhầm vào các cột này.
+    EXCLUDE_SUFFIX = ("cu", "cũ", "old", "backup", "moi", "mới", "new", "version", "history")
+    # Loại header bắt đầu bằng "kiểm tra"/"check" (cột kiểm tra ô check, không phải data)
+    EXCLUDE_PREFIX = ("kiểm tra", "kiem tra", "check", "ktra")
+    EXCLUDE_FIELDS = {"code", "name", "member_no", "drawing"}
+
     for field in fields:
         keywords = SMART_KEYWORDS.get(field)
         if not keywords:
@@ -202,12 +210,18 @@ def smart_match_columns(
         for h, norm in norm_headers:
             if h in used_headers:
                 continue
+            # Skip cột "...cũ"/"...old"/"...mới" hoặc bắt đầu "kiểm tra"/"check" cho field nhận diện chính
+            if field in EXCLUDE_FIELDS:
+                tokens = norm.split()
+                if any(t in EXCLUDE_SUFFIX for t in tokens):
+                    continue
+                if any(norm.startswith(pre) for pre in EXCLUDE_PREFIX):
+                    continue
             for rank, kw in enumerate(keywords):
                 kw_norm = kw.lower()
-                # Scoring mới: rank được nhân hệ số 10 cho exact match
-                # → substring của keyword rank 0 (score ~80) beat exact match keyword rank ≥4 (score ≤60)
+                # Scoring: exact match được floor ≥ 90 (luôn thắng substring 80)
                 if norm == kw_norm:
-                    score = 100 - rank * 10
+                    score = max(100 - rank * 2, 90)
                 elif kw_norm in norm:
                     score = 80 - rank * 2
                 elif norm in kw_norm and len(norm) >= 3:

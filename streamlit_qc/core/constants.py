@@ -104,11 +104,15 @@ STATUS_BG: dict[str, str] = {
 # Thứ tự ưu tiên: keyword sớm hơn match trước
 # ====================================================================
 SMART_KEYWORDS: dict[str, list[str]] = {
-    # "tên hồ sơ" + "tên cấu kiện" đặt LÊN ĐẦU để ưu tiên cột Đại Dũng "Member Punch No\nTên hồ sơ"
-    # so với plain "Member Punch No" (cột gom group, không unique sub-piece).
-    "code":      ["tên hồ sơ", "ten ho so", "tên cấu kiện", "ten cau kien", "member punch no", "punch no", "item code", "mã chi tiết", "ma chi tiet", "piece mark", "piece id", "unique"],
+    # Priority cho `code` (mã unique piece-level, vd "01BLP1001-001"):
+    # - "tên hồ sơ" đứng đầu vì cột Đại Dũng "Member Punch No\nTên hồ sơ" rất phổ biến.
+    # - "member punch no" đứng thứ 2 (file Bison/dự án mới chỉ có "Member Punch No").
+    # - "punch no" thứ 3 (variant ngắn).
+    # - "tên cấu kiện" XUỐNG SAU vì có file có cột "Tên cấu kiện cũ" gây nhầm (cột parent, ~46 unique).
+    # Lưu ý: smart_match_columns sẽ tự loại bỏ header chứa "cũ"/"old"/"backup"/"mới"/"new".
+    "code":      ["tên hồ sơ", "ten ho so", "member punch no", "punch no", "piece mark", "piece id", "item code", "mã chi tiết", "ma chi tiet", "tên cấu kiện", "ten cau kien", "unique"],
     "member_no": ["member no", "mã cấu kiện", "ma cau kien", "item no", "part no", "mark no"],
-    "name":      ["tên hạng mục", "ten hang muc", "drawing", "drawing no", "ten bv", "item name", "tên cấu kiện", "drawing name"],
+    "name":      ["tên bản vẽ", "ten ban ve", "drawing no", "drawing number", "tên hạng mục", "ten hang muc", "drawing", "ten bv", "item name", "drawing name"],
     "zone":      ["zone", "khu vực", "khu vuc", "area"],
     "phase":     ["phase", "mã hạng mục", "ma hang muc", "giai đoạn", "milestone", "module"],
     "street":    ["street", "trục", "truc", "grid line", "axis"],
@@ -196,17 +200,18 @@ COMPONENT_DISPLAY_COLUMNS: list[tuple[str, str]] = [
     ("code", "Tên cấu kiện"),
     ("name", "Bản vẽ"),
     ("rev_no", "Revision"),
-    ("workshop", "Xưởng"),
     ("status", "Tình trạng"),
     ("nfi_no", "Số NFI"),
     ("insp_date", "Ngày kiểm tra"),
 ]
 
-# Filter dropdown kiểu Excel cho 5 cột (từ Tkinter dòng 1070-1073)
+
+# ====================================================================
+# UI - Fields có thể filter dropdown (từ Tkinter)
+# ====================================================================
 COMPONENT_FILTER_FIELDS: list[tuple[str, str]] = [
     ("zone", "Zone"),
     ("phase", "Phase"),
-    ("material", "Material"),
     ("workshop", "Xưởng"),
     ("type", "Type"),
 ]
