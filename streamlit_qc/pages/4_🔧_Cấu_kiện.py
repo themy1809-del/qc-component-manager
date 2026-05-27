@@ -61,7 +61,7 @@ project_info_strip(proj)
 # Pre-set overdue filter từ Trang chủ (nếu có)
 _preset_overdue = st.session_state.pop("preset_overdue_filter", False)
 
-flt_col1, flt_col2, flt_col3, flt_col4, flt_col5 = st.columns([2, 3, 1.2, 1.2, 1.3])
+flt_col1, flt_col2, flt_col_btn, flt_col3, flt_col4, flt_col5 = st.columns([2, 2.6, 0.8, 1.2, 1.2, 1.3])
 with flt_col1:
     # Pre-set status nếu user click từ KPI trang Tổng quan
     _status_options = ["ALL"] + ALL_STATUSES
@@ -79,12 +79,22 @@ with flt_col2:
         "🔎 Tìm mã cấu kiện",
         value=_preset_search or "",
         placeholder="vd: 01BTG hoặc TB001",
+        key="search_input",
+        help="Gõ và Enter (hoặc bấm 🔍 Tìm) để lọc theo mã cấu kiện.",
     )
+with flt_col_btn:
+    st.write("")
+    st.write("")
+    if st.button("🔍 Tìm", use_container_width=True,
+                 help="Bấm để áp filter (hoặc Enter trong ô)"):
+        # Trigger rerun với giá trị search hiện tại — Streamlit tự rerun khi text_input đổi,
+        # nhưng nút này giúp UX rõ ràng + force-refresh khi cần.
+        st.rerun()
 with flt_col3:
     st.write("")
     st.write("")
     if st.button("🧹 Xoá lọc", use_container_width=True):
-        for key in ["status", "search", "only_overdue"] + [f"flt_{f}" for f, _ in COMPONENT_FILTER_FIELDS]:
+        for key in ["status", "search", "search_input", "only_overdue"] + [f"flt_{f}" for f, _ in COMPONENT_FILTER_FIELDS]:
             st.session_state.pop(key, None)
         st.rerun()
 with flt_col4:
@@ -195,8 +205,10 @@ df_table = pd.DataFrame([
         "Xưởng": r.workshop,
         "Fit-up": _result_label(getattr(r, "fitup_status", "")),
         "Ngày Fit-up": getattr(r, "fitup_date", ""),
+        "Import Fit-up": getattr(r, "fitup_imported_at", ""),
         "Final": _result_label(getattr(r, "final_status", "")),
         "Ngày Final": getattr(r, "final_date", ""),
+        "Import Final": getattr(r, "final_imported_at", ""),
     }
     for r in data.rows
 ])
@@ -230,6 +242,10 @@ edited = st.data_editor(
             "Ngày Fit-up", disabled=True, width="small",
             help="Ngày kiểm tra Fit-up.",
         ),
+        "Import Fit-up": st.column_config.TextColumn(
+            "Import Fit-up", disabled=True, width="medium",
+            help="Ngày & giờ file daily Fit-up được import vào app (DD/MM/YYYY HH:MM).",
+        ),
         "Final": st.column_config.TextColumn(
             "Final", disabled=True, width="small",
             help="Kết quả Final (nghiệm thu) mới nhất. PASS → ACCEPTED.",
@@ -237,6 +253,10 @@ edited = st.data_editor(
         "Ngày Final": st.column_config.TextColumn(
             "Ngày Final", disabled=True, width="small",
             help="Ngày kiểm tra Final.",
+        ),
+        "Import Final": st.column_config.TextColumn(
+            "Import Final", disabled=True, width="medium",
+            help="Ngày & giờ file daily Final được import vào app (DD/MM/YYYY HH:MM).",
         ),
     },
     key=f"editor_{pid}_{status}_{search}",
@@ -388,6 +408,107 @@ if n_selected > 0:
         f'</div></div>',
         unsafe_allow_html=True,
     )
+
+    # ============================================================
+    # 📋 EXPORT NFI THEO TEMPLATE CHUẨN
+    # ============================================================
+    from streamlit_qc.services import rfi_export_service as rfi_exp
+
+    with st.expander(
+        f"📋 Xuất NFI cho {n_selected} cấu kiện đã chọn (theo template chuẩn dự án)",
+        expanded=False,
+    ):
+        has_tpl = rfi_exp.has_template(pid)
+        ec1, ec2 = st.columns([2, 3])
+        with ec1:
+            st.markdown("**Template chuẩn của dự án:**")
+            if has_tpl:
+                tpl_prefix, tpl_counter = rfi_exp.get_template_rfi_seed(pid)
+                st.success(
+                    f"✅ Đã có template — prefix `{tpl_prefix}`, counter cuối `{tpl_counter}`"
+                )
+                if st.button("🔄 Thay template khác", key="reload_tpl"):
+                    st.session_state["show_upload_tpl"] = True
+            else:
+                st.warning("⚠️ Dự án chưa có template. Upload file mẫu RFI trước.")
+                st.session_state["show_upload_tpl"] = True
+
+        with ec2:
+            if st.session_state.get("show_upload_tpl") or not has_tpl:
+                up = st.file_uploader(
+                    "Upload file Excel template RFI (giữ format gốc)",
+                    type=["xlsx"],
+                    key=f"upload_tpl_{pid}",
+                    help="App sẽ lưu template này riêng cho dự án. Sheet bắt buộc: "
+                         "'RFI' + 'MEMBER LIST'. RFI No. lấy từ C7 sheet RFI.",
+                )
+                if up is not None:
+                    try:
+                        path = rfi_exp.save_template(pid, up.getvalue())
+                        st.success(f"✅ Đã lưu template: `{path.name}`")
+                        st.session_state.pop("show_upload_tpl", None)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Lỗi lưu template: {e}")
+
+        if has_tpl:
+            st.markdown("---")
+            ex1, ex2, ex3 = st.columns([1.5, 1.5, 2])
+            with ex1:
+                stage_choice = st.selectbox(
+                    "Inspection Stage",
+                    ["Fit-Up", "Final"],
+                    key="rfi_stage",
+                    help="Điền vào cột 'Inspection Stage' của MEMBER LIST.",
+                )
+            with ex2:
+                # Preview RFI No. sẽ sinh
+                try:
+                    preview_no = rfi_exp.get_next_rfi_no_by_template(db, pid)
+                    st.info(f"**RFI No. sẽ sinh:**\n\n`{preview_no}`")
+                except Exception as e:
+                    st.error(f"Lỗi preview RFI No.: {e}")
+                    preview_no = None
+            with ex3:
+                st.write("")
+                st.write("")
+                if st.button(
+                    f"📥 Xuất NFI cho {n_selected} cấu kiện",
+                    type="primary",
+                    use_container_width=True,
+                    key="export_nfi_btn",
+                ):
+                    try:
+                        with st.spinner(f"Đang tạo file NFI cho {n_selected} cấu kiện..."):
+                            file_bytes, rfi_no = rfi_exp.export_rfi_file(
+                                db=db,
+                                pid=pid,
+                                project_code=proj["code"],
+                                component_ids=[int(c) for c in selected_ids],
+                                user_name=st.session_state.get(S_CURRENT_USER, ""),
+                                inspection_stage=stage_choice,
+                            )
+                        st.session_state["last_nfi_bytes"] = file_bytes
+                        st.session_state["last_nfi_no"] = rfi_no
+                        st.success(
+                            f"✅ Đã tạo file NFI **{rfi_no}** "
+                            f"({n_selected} cấu kiện) — bấm Tải xuống bên dưới."
+                        )
+                    except FileNotFoundError as e:
+                        st.error(f"❌ {e}")
+                    except Exception as e:
+                        st.exception(e)
+
+            # Show download button nếu vừa export xong
+            if st.session_state.get("last_nfi_bytes"):
+                st.download_button(
+                    f"💾 Tải file: {st.session_state['last_nfi_no']}.xlsx",
+                    data=st.session_state["last_nfi_bytes"],
+                    file_name=f"{st.session_state['last_nfi_no']}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
+
     bk1, bk2, bk3, bk4, bk5 = st.columns([2, 2, 2, 1.5, 1.5])
     with bk1:
         bulk_field = st.selectbox(
