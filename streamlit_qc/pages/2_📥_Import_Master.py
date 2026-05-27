@@ -107,6 +107,62 @@ if st.session_state.get("master_last_pid") != pid:
     st.session_state["master_last_pid"] = pid
 
 
+# ============================================================
+# Auto-map TẤT CẢ cột Excel chưa được map sang field `extra_<slug>`
+# → đảm bảo không mất dữ liệu nào khi import
+# ============================================================
+import re as _re_slug
+
+
+def _slugify_col(name: str) -> str:
+    """Convert tên cột Excel sang field key an toàn.
+
+    Vd: "Length [mm]"   → "length_mm"
+        "Weight (kg)"   → "weight_kg"
+        "Số NFI"        → "so_nfi"
+        "Q.ty"          → "q_ty"
+    """
+    s = str(name or "").strip().lower()
+    # Bỏ dấu tiếng Việt thô
+    s = (s.replace("á","a").replace("à","a").replace("ả","a").replace("ã","a").replace("ạ","a")
+           .replace("â","a").replace("ấ","a").replace("ầ","a").replace("ẩ","a").replace("ẫ","a").replace("ậ","a")
+           .replace("ă","a").replace("ắ","a").replace("ằ","a").replace("ẳ","a").replace("ẵ","a").replace("ặ","a")
+           .replace("é","e").replace("è","e").replace("ẻ","e").replace("ẽ","e").replace("ẹ","e")
+           .replace("ê","e").replace("ế","e").replace("ề","e").replace("ể","e").replace("ễ","e").replace("ệ","e")
+           .replace("í","i").replace("ì","i").replace("ỉ","i").replace("ĩ","i").replace("ị","i")
+           .replace("ó","o").replace("ò","o").replace("ỏ","o").replace("õ","o").replace("ọ","o")
+           .replace("ô","o").replace("ố","o").replace("ồ","o").replace("ổ","o").replace("ỗ","o").replace("ộ","o")
+           .replace("ơ","o").replace("ớ","o").replace("ờ","o").replace("ở","o").replace("ỡ","o").replace("ợ","o")
+           .replace("ú","u").replace("ù","u").replace("ủ","u").replace("ũ","u").replace("ụ","u")
+           .replace("ư","u").replace("ứ","u").replace("ừ","u").replace("ử","u").replace("ữ","u").replace("ự","u")
+           .replace("ý","y").replace("ỳ","y").replace("ỷ","y").replace("ỹ","y").replace("ỵ","y")
+           .replace("đ","d"))
+    s = _re_slug.sub(r"[^a-z0-9]+", "_", s).strip("_")
+    return s or "col"
+
+
+def _auto_map_all_columns(current_mapping: dict, all_headers: list) -> dict:
+    """Tạo mapping mới: GIỮ NGUYÊN các trường chuẩn đã map, thêm `extra_<slug>` cho cột chưa map."""
+    new_mapping = dict(current_mapping)
+    mapped_cols = {v for v in new_mapping.values() if v}
+    used_keys = set(new_mapping.keys())
+    for col in all_headers:
+        if not col or str(col).strip().lower().startswith("unnamed"):
+            continue
+        if col in mapped_cols:
+            continue
+        slug = _slugify_col(col)
+        key = f"extra_{slug}"
+        # Tránh collision: nếu key trùng, thêm hậu tố số
+        suffix = 1
+        while key in used_keys:
+            suffix += 1
+            key = f"extra_{slug}_{suffix}"
+        new_mapping[key] = col
+        used_keys.add(key)
+    return new_mapping
+
+
 def _run_smart_detect(filepath, sheet=None):
     try:
         sheets = list_sheet_names(filepath)
@@ -344,6 +400,14 @@ with opt_col1:
         help="Bật nếu cần force update toàn bộ inspection từ Master columns. "
              "Inspection từ Daily import sẽ KHÔNG bị đụng vào."
     )
+    auto_map_all = st.checkbox(
+        "🔒 Lấy HẾT mọi cột Excel khi import (auto-map cột chưa map)",
+        value=True,
+        help="Mặc định BẬT — đảm bảo không bỏ sót dữ liệu nào. "
+             "Các cột chưa map sẽ tự động được lưu thành trường `extra_<tên>` "
+             "trong data_json của cấu kiện.",
+        key="opt_auto_map_all",
+    )
 
 st.write("")
 
@@ -377,6 +441,33 @@ if df is not None and "code" in mapping:
             ]
 
     with st.expander("📋 Preview — Kiểm tra mapping trước khi import", expanded=True):
+        # === Banner "Đã lấy HẾT N cột" ===
+        _hdrs_clean = [h for h in (headers or []) if h and not str(h).strip().lower().startswith("unnamed")]
+        _total_cols_pv = len(_hdrs_clean)
+        _std_mapped_pv = sum(1 for f, _ in STANDARD_FIELDS if mapping.get(f))
+        _extra_mapped_pv = sum(1 for k in mapping if k.startswith("extra_"))
+        _will_auto_pv = bool(st.session_state.get("opt_auto_map_all", True))
+        _unmapped_pv = max(0, _total_cols_pv - _std_mapped_pv - _extra_mapped_pv)
+        if _will_auto_pv and _unmapped_pv > 0:
+            st.success(
+                f"✅ **Sẽ lấy HẾT {_total_cols_pv} cột** khi import: "
+                f"**{_std_mapped_pv}** cột chuẩn + **{_extra_mapped_pv}** cột extra đã map + "
+                f"**{_unmapped_pv}** cột phụ (tự động lưu thành `extra_*` khi bấm Import). "
+                f"_Không cột nào bị bỏ qua._"
+            )
+        elif _unmapped_pv == 0 and _total_cols_pv > 0:
+            st.success(
+                f"✅ **Đã map HẾT {_total_cols_pv} cột** ({_std_mapped_pv} chuẩn + {_extra_mapped_pv} extra) — "
+                f"không cột nào bị bỏ qua khi import."
+            )
+        else:
+            st.info(
+                f"📦 Tổng **{_total_cols_pv}** cột trong file — đang map "
+                f"**{_std_mapped_pv}** trường chuẩn + **{_extra_mapped_pv}** trường extra. "
+                f"Có **{_unmapped_pv}** cột chưa map. "
+                f"_(Tick '🔒 Lấy HẾT mọi cột' ở trên hoặc bấm '✨ Map HẾT' để lấy hết.)_"
+            )
+
         pcol1, pcol2 = st.columns(2)
         with pcol1:
             dup_line = (
@@ -439,8 +530,18 @@ with st.expander("Xem trước 5 dòng đầu", expanded=False):
         if preview_cols:
             st.dataframe(df[preview_cols].head(5), use_container_width=True, height=220)
 
-with st.expander(f"Tinh chỉnh mapping ({len(mapping)}/{len(STANDARD_FIELDS)} trường)", expanded=False):
-    cc1, cc2, cc3 = st.columns([3, 2, 3])
+_n_std_mapped = sum(1 for f, _ in STANDARD_FIELDS if mapping.get(f))
+_n_extra_mapped = sum(1 for k in mapping if k.startswith("extra_"))
+_n_total_cols = len([h for h in (headers or []) if h and not str(h).strip().lower().startswith("unnamed")])
+_n_unmapped = _n_total_cols - _n_std_mapped - _n_extra_mapped
+
+with st.expander(
+    f"Tinh chỉnh mapping ({_n_std_mapped}/{len(STANDARD_FIELDS)} trường chuẩn"
+    + (f" + {_n_extra_mapped} cột extra" if _n_extra_mapped else "")
+    + ")",
+    expanded=False,
+):
+    cc1, cc2, cc3, cc4 = st.columns([2.5, 1.5, 2, 2])
     with cc1:
         sheets_local = st.session_state.get(K_SHEETS, [])
         new_sheet = st.selectbox("Sheet", sheets_local,
@@ -448,6 +549,20 @@ with st.expander(f"Tinh chỉnh mapping ({len(mapping)}/{len(STANDARD_FIELDS)} t
     with cc2:
         new_hr = st.number_input("Dòng tiêu đề (0-based)", min_value=0, max_value=30, value=header_row)
     with cc3:
+        st.write("")
+        st.write("")
+        if st.button("✨ Map HẾT các cột", use_container_width=True,
+                     help="Tự động map TẤT CẢ các cột Excel chưa được map "
+                          "thành trường extra_<tên> để lấy hết dữ liệu."):
+            st.session_state[K_MAPPING] = _auto_map_all_columns(
+                mapping or {}, headers or []
+            )
+            st.success(
+                f"✅ Đã map HẾT {_n_total_cols} cột — "
+                f"không cột nào bị bỏ qua khi import."
+            )
+            st.rerun()
+    with cc4:
         st.write("")
         st.write("")
         if st.button("📖 Đọc lại", use_container_width=True):
@@ -481,7 +596,21 @@ with st.expander(f"Tinh chỉnh mapping ({len(mapping)}/{len(STANDARD_FIELDS)} t
             chosen = st.selectbox(label, options, index=idx, key=f"map_{field}")
             if chosen and chosen != "(bỏ qua)":
                 new_mapping[field] = chosen
+    # GIỮ lại các trường extra_* (do "Map HẾT" hoặc auto khi import sinh ra)
+    for k, v in (mapping or {}).items():
+        if k.startswith("extra_") and v and k not in new_mapping:
+            new_mapping[k] = v
     st.session_state[K_MAPPING] = new_mapping
+    if any(k.startswith("extra_") for k in new_mapping):
+        n_extra = sum(1 for k in new_mapping if k.startswith("extra_"))
+        st.caption(
+            f"➕ _Đã giữ {n_extra} cột extra (auto-map). "
+            f"Nếu muốn bỏ, bấm nút **🔄 Reset** dưới đây._"
+        )
+        if st.button("🔄 Reset (chỉ giữ trường chuẩn)", key="reset_extras"):
+            st.session_state[K_MAPPING] = {k: v for k, v in new_mapping.items()
+                                           if not k.startswith("extra_")}
+            st.rerun()
 
 with st.expander("Lưu / Tải template mapping", expanded=False):
     templates = mapping_service.load_templates()
@@ -508,6 +637,15 @@ with st.expander("Lưu / Tải template mapping", expanded=False):
 
 if do_import and df is not None and "code" in mapping:
     try:
+        # AUTO-MAP HẾT: nếu user bật toggle "Lấy HẾT mọi cột"
+        if st.session_state.get("opt_auto_map_all", True):
+            _before = len(mapping)
+            mapping = _auto_map_all_columns(mapping, headers or [])
+            st.session_state[K_MAPPING] = mapping
+            _added = len(mapping) - _before
+            if _added > 0:
+                st.info(f"🔒 Auto-map đã thêm **{_added}** cột extra trước khi import — lấy hết dữ liệu.")
+
         # FORCE RE-SEED: xóa MASTER-source inspections trước khi import (giữ DAILY)
         if force_reseed:
             n_deleted = db.conn.execute(

@@ -94,7 +94,7 @@ with flt_col3:
     st.write("")
     st.write("")
     if st.button("🧹 Xoá lọc", use_container_width=True):
-        for key in ["status", "search", "search_input", "only_overdue"] + [f"flt_{f}" for f, _ in COMPONENT_FILTER_FIELDS]:
+        for key in ["status", "search", "search_input", "only_overdue", "flt_daily"] + [f"flt_{f}" for f, _ in COMPONENT_FILTER_FIELDS]:
             st.session_state.pop(key, None)
         st.rerun()
 with flt_col4:
@@ -109,6 +109,17 @@ with flt_col5:
         value=_preset_overdue,
         key="only_overdue",
         help="Chỉ hiển thị cấu kiện đã Fit-up nhưng quá 7 ngày chưa Final",
+    )
+
+# Hàng 2: filter "có / chưa có file daily"
+flt2_col1, flt2_col2, _ = st.columns([2, 2, 6])
+with flt2_col1:
+    daily_filter = st.selectbox(
+        "🗂 Lọc theo file daily",
+        ["Tất cả", "Đã có Fit-up", "Chưa có Fit-up",
+         "Đã có Final", "Chưa có Final"],
+        key="flt_daily",
+        help="Lọc theo trạng thái import file daily (cột Import Fit-up / Import Final).",
     )
 
 # Tính set ID overdue nếu filter bật (cache 60s)
@@ -165,6 +176,16 @@ _load_placeholder.empty()
 if only_overdue and overdue_ids:
     data.rows = [r for r in data.rows if r.id in overdue_ids]
 
+# Áp filter file daily
+if daily_filter == "Đã có Fit-up":
+    data.rows = [r for r in data.rows if getattr(r, "fitup_imported_at", "")]
+elif daily_filter == "Chưa có Fit-up":
+    data.rows = [r for r in data.rows if not getattr(r, "fitup_imported_at", "")]
+elif daily_filter == "Đã có Final":
+    data.rows = [r for r in data.rows if getattr(r, "final_imported_at", "")]
+elif daily_filter == "Chưa có Final":
+    data.rows = [r for r in data.rows if not getattr(r, "final_imported_at", "")]
+
 status_label = "tất cả trạng thái" if status == "ALL" else STATUS_LABELS.get(status, status)
 caption_parts = [
     f"Tổng dự án: **{data.total_in_db:,}**",
@@ -172,6 +193,8 @@ caption_parts = [
 ]
 if dropdown_filters:
     caption_parts.append(f"Sau filter cột: **{data.after_dropdown_filter:,}**")
+if daily_filter and daily_filter != "Tất cả":
+    caption_parts.append(f"🗂 {daily_filter}: **{len(data.rows):,}**")
 if only_overdue:
     caption_parts.append(f"⚠️ Chỉ overdue: **{len(data.rows):,}**")
 st.caption(" · ".join(caption_parts))
@@ -453,22 +476,63 @@ if n_selected > 0:
 
         if has_tpl:
             st.markdown("---")
-            ex1, ex2, ex3 = st.columns([1.5, 1.5, 2])
-            with ex1:
+            st.markdown("**🎨 Nội dung trang bìa RFI** *(điền sẵn vào sheet RFI)*")
+            cb1, cb2, cb3, cb4 = st.columns([1.5, 1.5, 1.5, 1.5])
+            with cb1:
                 stage_choice = st.selectbox(
                     "Inspection Stage",
                     ["Fit-Up", "Final"],
                     key="rfi_stage",
                     help="Điền vào cột 'Inspection Stage' của MEMBER LIST.",
                 )
-            with ex2:
-                # Preview RFI No. sẽ sinh
+            with cb2:
+                from datetime import date as _date
+                rfi_date = st.date_input(
+                    "Ngày RFI", value=_date.today(), key="rfi_date",
+                    help="Ngày đề nghị kiểm tra (ô F64 sheet RFI).",
+                )
+            with cb3:
+                itp_doc_input = st.text_input(
+                    "ITP Doc. Reference No.",
+                    value="DDC-QAQC-VIO20025-ITP-001",
+                    key="rfi_itp_doc",
+                    help="Mã văn bản ITP (ô C19).",
+                )
+            with cb4:
+                itp_item_input = st.text_input(
+                    "Item no (ITP)", value="3.2", key="rfi_itp_item",
+                    help="Số mục trong ITP (ô H14). Vd: 3.2",
+                )
+
+            # Discipline checkboxes
+            st.markdown("**🔖 Discipline** *(tick các loại sẽ kiểm tra)*")
+            disc_options = list(rfi_exp.DISCIPLINES)
+            default_disc = ["Welding", "Dimension"] if stage_choice == "Fit-Up" else ["Dimension", "Coating"]
+            disciplines_sel = st.multiselect(
+                "Loại kiểm tra (Discipline)",
+                disc_options,
+                default=default_disc,
+                key="rfi_disciplines",
+                label_visibility="collapsed",
+            )
+
+            st.markdown("---")
+            ex1, ex2, ex3 = st.columns([2, 2, 3])
+            with ex1:
                 try:
                     preview_no = rfi_exp.get_next_rfi_no_by_template(db, pid)
                     st.info(f"**RFI No. sẽ sinh:**\n\n`{preview_no}`")
                 except Exception as e:
                     st.error(f"Lỗi preview RFI No.: {e}")
                     preview_no = None
+            with ex2:
+                mtype_override = st.text_input(
+                    "Member Type (override)",
+                    value="",
+                    placeholder="Để trống = auto-detect",
+                    key="rfi_mtype_override",
+                    help="Ô C22. Để trống thì app tự lấy loại chiếm đa số.",
+                )
             with ex3:
                 st.write("")
                 st.write("")
@@ -487,6 +551,11 @@ if n_selected > 0:
                                 component_ids=[int(c) for c in selected_ids],
                                 user_name=st.session_state.get(S_CURRENT_USER, ""),
                                 inspection_stage=stage_choice,
+                                disciplines=disciplines_sel,
+                                itp_doc=itp_doc_input or None,
+                                itp_item_no=itp_item_input or None,
+                                member_type_override=mtype_override or None,
+                                proposed_date=rfi_date.isoformat() if rfi_date else None,
                             )
                         st.session_state["last_nfi_bytes"] = file_bytes
                         st.session_state["last_nfi_no"] = rfi_no
@@ -648,7 +717,6 @@ with exp_col1:
 with exp_col2:
     accepted_ids = [r.id for r in data.rows if r.status == "ACCEPTED"]
     n_accepted = len(accepted_ids)
-    n_accepted = len(accepted_ids)
     gen_pdf = st.button(
         f"📄 PDF biên bản ({n_accepted} ACCEPTED)",
         use_container_width=True,
@@ -685,3 +753,80 @@ if gen_pdf and accepted_ids:
         st.error("Chưa cài reportlab.")
     except Exception as e:
         st.error(f"Lỗi: {e}")
+
+# ============================================================
+# 📜 LỊCH SỬ NFI ĐÃ XUẤT
+# ============================================================
+st.divider()
+from streamlit_qc.services import rfi_export_service as _rfi_exp_h
+_nfi_history = _rfi_exp_h.list_exported_nfis(pid)
+with st.expander(
+    f"📜 Lịch sử NFI đã xuất ({len(_nfi_history)} file)", expanded=False,
+):
+    if not _nfi_history:
+        st.info(
+            "Chưa có file NFI nào được xuất cho dự án này. "
+            "Tick chọn cấu kiện ở bảng trên + bấm 📋 **Xuất NFI** để tạo file đầu tiên."
+        )
+    else:
+        for nfi in _nfi_history[:50]:
+            hc1, hc2, hc3, hc4 = st.columns([2.5, 2, 1.5, 1])
+            with hc1:
+                st.markdown(
+                    f"**`{nfi['rfi_no']}`**  \n"
+                    f"<span style='color:#64748B;font-size:12px;'>"
+                    f"📅 {nfi['ts'].strftime('%d/%m/%Y %H:%M')}"
+                    f"</span>",
+                    unsafe_allow_html=True,
+                )
+            with hc2:
+                rfi_db = db.conn.execute(
+                    "SELECT response_note, inspection_type, submitted_by, "
+                    "       proposed_date, status "
+                    "FROM rfis WHERE project_id=? AND rfi_no=?",
+                    (pid, nfi['rfi_no']),
+                ).fetchone()
+                if rfi_db:
+                    note = rfi_db["response_note"] or ""
+                    n_codes = note.count(",") + 1 if note else 0
+                    st.caption(
+                        f"📋 {rfi_db['inspection_type']} · "
+                        f"{n_codes} cấu kiện · "
+                        f"👤 {rfi_db['submitted_by'] or '—'} · "
+                        f"📌 {rfi_db['status']}"
+                    )
+                else:
+                    st.caption(f"📦 {nfi['size_bytes']:,} bytes")
+            with hc3:
+                try:
+                    file_bytes_h = _rfi_exp_h.read_exported_nfi(pid, nfi['rfi_no'])
+                    if file_bytes_h:
+                        st.download_button(
+                            "💾 Tải lại",
+                            file_bytes_h,
+                            file_name=f"{nfi['rfi_no']}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key=f"redl_{nfi['rfi_no']}",
+                            use_container_width=True,
+                        )
+                except Exception:
+                    st.caption("⚠️ file lỗi")
+            with hc4:
+                if st.button(
+                    "🗑", key=f"del_nfi_{nfi['rfi_no']}",
+                    help=f"Xóa file {nfi['rfi_no']}.xlsx",
+                ):
+                    if _rfi_exp_h.delete_exported_nfi(pid, nfi['rfi_no']):
+                        db.conn.execute(
+                            "DELETE FROM rfis WHERE project_id=? AND rfi_no=?",
+                            (pid, nfi['rfi_no']),
+                        )
+                        db.conn.commit()
+                        st.success(f"Đã xóa {nfi['rfi_no']}")
+                        st.rerun()
+            st.markdown(
+                "<hr style='margin:6px 0;border:0;border-top:1px solid #E2E8F0;'>",
+                unsafe_allow_html=True,
+            )
+        if len(_nfi_history) > 50:
+            st.caption(f"_Chỉ hiển thị 50 file mới nhất / tổng {len(_nfi_history)}._")
