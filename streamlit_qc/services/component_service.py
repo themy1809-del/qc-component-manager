@@ -41,6 +41,9 @@ class ComponentRow:
     final_date: str = ""     # ngày Final gần nhất (DD/MM/YYYY)
     fitup_imported_at: str = ""  # ngày file daily Fit-up được import (DD/MM/YYYY HH:MM)
     final_imported_at: str = ""  # ngày file daily Final được import (DD/MM/YYYY HH:MM)
+    fitup_inspector: str = ""  # tên inspector của lần Fit-up gần nhất
+    final_inspector: str = ""  # tên inspector của lần Final gần nhất
+    guid: str = ""             # Mã GUID/định danh duy nhất từ master data_json
 
 
 @dataclass
@@ -103,20 +106,22 @@ def _get_latest_inspections(db: DB, pid: int) -> dict[int, tuple[str, str]]:
     return {r["cid"]: (r["d"] or "", r["rfi"] or "") for r in rows}
 
 
-def _get_status_by_type(db: DB, pid: int) -> dict[tuple[int, str], tuple[str, str, str]]:
+def _get_status_by_type(db: DB, pid: int) -> dict[tuple[int, str], tuple[str, str, str, str]]:
     """
-    Trả về {(component_id, inspection_type): (result, date_iso, imported_at)}.
+    Trả về {(component_id, inspection_type): (result, date_iso, imported_at, inspector)}.
 
     Result = "PASS" / "FAIL" / "RECHECK" / ...
     Date = inspection_date của bản ghi mới nhất.
     imported_at = thời điểm file daily được import vào app (timestamp).
+    inspector = tên người kiểm tra của bản ghi mới nhất.
 
-    Dùng cho cột Fit-up (FUR) và Final (DGRP) + ngày tương ứng + ngày import.
+    Dùng cho cột Fit-up (FUR) và Final (DGRP).
     """
     rows = db.conn.execute(
         """
         SELECT i.component_id cid, i.inspection_type itype,
-               i.result r, i.inspection_date d, i.imported_at imp
+               i.result r, i.inspection_date d, i.imported_at imp,
+               i.inspector ins
         FROM inspections i
         INNER JOIN (
             SELECT component_id, inspection_type, MAX(id) maxid
@@ -128,7 +133,9 @@ def _get_status_by_type(db: DB, pid: int) -> dict[tuple[int, str], tuple[str, st
         (pid, pid),
     ).fetchall()
     return {
-        (r["cid"], r["itype"]): ((r["r"] or ""), (r["d"] or ""), (r["imp"] or ""))
+        (r["cid"], r["itype"]): (
+            (r["r"] or ""), (r["d"] or ""), (r["imp"] or ""), (r["ins"] or ""),
+        )
         for r in rows
     }
 
@@ -368,11 +375,14 @@ def list_components(
             or ""
         )
 
-        # Fit-up + Final status + date + imported_at từ inspection_type
-        fitup_tuple = status_by_type.get((r["id"], "FUR"), ("", "", ""))
-        final_tuple = status_by_type.get((r["id"], "DGRP"), ("", "", ""))
-        fitup_raw, fitup_date_iso, fitup_imp_iso = fitup_tuple
-        final_raw, final_date_iso, final_imp_iso = final_tuple
+        # Fit-up + Final status + date + imported_at + inspector từ inspection_type
+        fitup_tuple = status_by_type.get((r["id"], "FUR"), ("", "", "", ""))
+        final_tuple = status_by_type.get((r["id"], "DGRP"), ("", "", "", ""))
+        fitup_raw, fitup_date_iso, fitup_imp_iso, fitup_ins = fitup_tuple
+        final_raw, final_date_iso, final_imp_iso, final_ins = final_tuple
+
+        # Lấy GUID từ data_json (đã được map từ master)
+        guid_val = str(data.get("guid") or "")
 
         rows_after_dropdown.append(ComponentRow(
             id=r["id"],
@@ -389,6 +399,9 @@ def list_components(
             final_date=format_date_vn(final_date_iso),
             fitup_imported_at=_format_imported_at(fitup_imp_iso),
             final_imported_at=_format_imported_at(final_imp_iso),
+            fitup_inspector=fitup_ins,
+            final_inspector=final_ins,
+            guid=guid_val,
         ))
 
     result.rows = rows_after_dropdown

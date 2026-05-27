@@ -222,18 +222,20 @@ df_table = pd.DataFrame([
     {
         "id": r.id,
         "✓": False,  # Checkbox cho bulk update
+        "Stt": idx + 1,
         "Tên cấu kiện": r.code,
         "Bản vẽ": r.name,
-        "Revision": r.rev_no,
+        "Rev": r.rev_no,
         "Xưởng": r.workshop,
-        "Fit-up": _result_label(getattr(r, "fitup_status", "")),
+        "Mã Gui": getattr(r, "guid", ""),
+        "Kiểm tra fitup": _result_label(getattr(r, "fitup_status", "")),
         "Ngày Fit-up": getattr(r, "fitup_date", ""),
-        "Import Fit-up": getattr(r, "fitup_imported_at", ""),
-        "Final": _result_label(getattr(r, "final_status", "")),
+        "Người KT Fit-up": getattr(r, "fitup_inspector", ""),
+        "Kiểm tra final": _result_label(getattr(r, "final_status", "")),
         "Ngày Final": getattr(r, "final_date", ""),
-        "Import Final": getattr(r, "final_imported_at", ""),
+        "Người KT Final": getattr(r, "final_inspector", ""),
     }
-    for r in data.rows
+    for idx, r in enumerate(data.rows)
 ])
 
 SNAP_KEY = f"comp_snapshot_{pid}_{status}_{search}_{'_'.join(dropdown_filters.values())}"
@@ -253,33 +255,41 @@ edited = st.data_editor(
             "✓", width="small",
             help="Tick để chọn cấu kiện cho bulk update / xóa hàng loạt",
         ),
+        "Stt": st.column_config.NumberColumn(
+            "Stt", disabled=True, width="small",
+            help="Số thứ tự dòng hiện tại.",
+        ),
         "Tên cấu kiện": st.column_config.TextColumn("Tên cấu kiện", disabled=True, width="medium"),
         "Bản vẽ": st.column_config.TextColumn("Bản vẽ", width="medium"),
-        "Revision": st.column_config.TextColumn("Revision", width="small"),
+        "Rev": st.column_config.TextColumn("Rev", width="small"),
         "Xưởng": st.column_config.TextColumn("Xưởng", width="small"),
-        "Fit-up": st.column_config.TextColumn(
-            "Fit-up", disabled=True, width="small",
+        "Mã Gui": st.column_config.TextColumn(
+            "Mã Gui", disabled=True, width="medium",
+            help="Mã GUID/định danh duy nhất lấy từ Master (data_json.guid).",
+        ),
+        "Kiểm tra fitup": st.column_config.TextColumn(
+            "Kiểm tra fitup", disabled=True, width="small",
             help="Kết quả Fit-up mới nhất từ file daily.",
         ),
         "Ngày Fit-up": st.column_config.TextColumn(
             "Ngày Fit-up", disabled=True, width="small",
             help="Ngày kiểm tra Fit-up.",
         ),
-        "Import Fit-up": st.column_config.TextColumn(
-            "Import Fit-up", disabled=True, width="medium",
-            help="Ngày & giờ file daily Fit-up được import vào app (DD/MM/YYYY HH:MM).",
+        "Người KT Fit-up": st.column_config.TextColumn(
+            "Người KT Fit-up", disabled=True, width="medium",
+            help="Người kiểm tra Fit-up của lần gần nhất.",
         ),
-        "Final": st.column_config.TextColumn(
-            "Final", disabled=True, width="small",
+        "Kiểm tra final": st.column_config.TextColumn(
+            "Kiểm tra final", disabled=True, width="small",
             help="Kết quả Final (nghiệm thu) mới nhất. PASS → ACCEPTED.",
         ),
         "Ngày Final": st.column_config.TextColumn(
             "Ngày Final", disabled=True, width="small",
             help="Ngày kiểm tra Final.",
         ),
-        "Import Final": st.column_config.TextColumn(
-            "Import Final", disabled=True, width="medium",
-            help="Ngày & giờ file daily Final được import vào app (DD/MM/YYYY HH:MM).",
+        "Người KT Final": st.column_config.TextColumn(
+            "Người KT Final", disabled=True, width="medium",
+            help="Người kiểm tra Final của lần gần nhất.",
         ),
     },
     key=f"editor_{pid}_{status}_{search}",
@@ -582,7 +592,7 @@ if n_selected > 0:
     with bk1:
         bulk_field = st.selectbox(
             "Cột cần đổi",
-            ["Xưởng", "Bản vẽ", "Revision"],
+            ["Xưởng", "Bản vẽ", "Rev"],
             key="bulk_field",
         )
     with bk2:
@@ -599,7 +609,7 @@ if n_selected > 0:
             type="primary", use_container_width=True,
             disabled=(not bulk_value.strip()),
         ):
-            UI_TO_FLD = {"Xưởng": "workshop", "Bản vẽ": "name", "Revision": "rev_no"}
+            UI_TO_FLD = {"Xưởng": "workshop", "Bản vẽ": "name", "Rev": "rev_no"}
             fld = UI_TO_FLD[bulk_field]
             user = st.session_state[S_CURRENT_USER]
             n_ok, n_fail = 0, 0
@@ -673,9 +683,9 @@ snapshot = st.session_state[SNAP_KEY]
 edited_indexed = edited.set_index("id")
 snap_indexed = snapshot.set_index("id")
 changes = []
-EDITABLE_COLS = ["Bản vẽ", "Revision", "Xưởng"]
+EDITABLE_COLS = ["Bản vẽ", "Rev", "Xưởng"]
 UI_COL_TO_SERVICE = {
-    "Bản vẽ": "name", "Revision": "rev_no", "Xưởng": "workshop",
+    "Bản vẽ": "name", "Rev": "rev_no", "Xưởng": "workshop",
 }
 
 for cid in edited_indexed.index:
