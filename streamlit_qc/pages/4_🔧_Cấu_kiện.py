@@ -56,7 +56,7 @@ st.markdown(
     /* Bỏ giới hạn chiều ngang của các cell trong data_editor */
     [data-testid="stDataEditor"] table {
         width: 100% !important;
-        min-width: 1900px;  /* đủ rộng cho 13 cột (✓, Stt, Tên, Bản vẽ, Rev, Xưởng, Mã Gui, KT fitup, Ngày fitup, Người KT fitup, KT final, Ngày final, Người KT final) */
+        min-width: 1600px;  /* đủ rộng cho 13 cột — Tên cấu kiện + Mã Gui đã thu nhỏ */
     }
     /* Header bảng — căn giữa text, chữ đậm hơn */
     [data-testid="stDataEditor"] thead th {
@@ -256,6 +256,16 @@ def _result_label(result: str) -> str:
     return f"⚪ {result}"
 
 
+def _short_guid(g: str) -> str:
+    """Rút gọn GUID: '2ad18b07-b471-4cc6-...' → '2ad18b07…' (8 ký tự + dấu ellipsis)."""
+    s = str(g or "").strip()
+    if not s:
+        return ""
+    if len(s) > 10:
+        return s[:8] + "…"
+    return s
+
+
 df_table = pd.DataFrame([
     {
         "id": r.id,
@@ -265,7 +275,7 @@ df_table = pd.DataFrame([
         "Bản vẽ": r.name,
         "Rev": r.rev_no,
         "Xưởng": r.workshop,
-        "Mã Gui": getattr(r, "guid", ""),
+        "Mã Gui": _short_guid(getattr(r, "guid", "")),
         "Kiểm tra fitup": _result_label(getattr(r, "fitup_status", "")),
         "Ngày Fit-up": getattr(r, "fitup_date", ""),
         "Người KT Fit-up": getattr(r, "fitup_inspector", ""),
@@ -297,9 +307,9 @@ edited = st.data_editor(
             "Stt", disabled=True, width="small",
             help="Số thứ tự dòng hiện tại.",
         ),
-        # Tên cấu kiện cần rộng vì mã dài (vd: 01FBB1019-003)
+        # Tên cấu kiện vừa đủ (mã ~13 ký tự)
         "Tên cấu kiện": st.column_config.TextColumn(
-            "Tên cấu kiện", disabled=True, width="large",
+            "Tên cấu kiện", disabled=True, width="medium",
         ),
         # Bản vẽ thu nhỏ vì thường ngắn (vd: BLB3001, BTG3005)
         "Bản vẽ": st.column_config.TextColumn(
@@ -310,8 +320,8 @@ edited = st.data_editor(
         "Rev": st.column_config.TextColumn("Rev", width="small"),
         "Xưởng": st.column_config.TextColumn("Xưởng", width="small"),
         "Mã Gui": st.column_config.TextColumn(
-            "Mã Gui", disabled=True, width="medium",
-            help="Mã GUID/định danh duy nhất lấy từ Master (data_json.guid).",
+            "Mã Gui", disabled=True, width="small",
+            help="Mã GUID rút gọn (8 ký tự đầu + …). Tích chọn 1 cấu kiện để xem GUID đầy đủ trong panel comment.",
         ),
         "Kiểm tra fitup": st.column_config.TextColumn(
             "Kiểm tra fitup", disabled=True, width="small",
