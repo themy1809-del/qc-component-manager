@@ -56,7 +56,19 @@ st.markdown(
     /* Bỏ giới hạn chiều ngang của các cell trong data_editor */
     [data-testid="stDataEditor"] table {
         width: 100% !important;
-        min-width: 1600px;
+        min-width: 1900px;  /* đủ rộng cho 13 cột (✓, Stt, Tên, Bản vẽ, Rev, Xưởng, Mã Gui, KT fitup, Ngày fitup, Người KT fitup, KT final, Ngày final, Người KT final) */
+    }
+    /* Header bảng — căn giữa text, chữ đậm hơn */
+    [data-testid="stDataEditor"] thead th {
+        text-align: center !important;
+        font-weight: 600 !important;
+        background: #F1F5F9 !important;
+        color: #0F1E40 !important;
+    }
+    /* Cell trong bảng — padding gọn */
+    [data-testid="stDataEditor"] tbody td {
+        padding: 4px 8px !important;
+        font-size: 13px !important;
     }
     </style>
     """,
@@ -285,8 +297,16 @@ edited = st.data_editor(
             "Stt", disabled=True, width="small",
             help="Số thứ tự dòng hiện tại.",
         ),
-        "Tên cấu kiện": st.column_config.TextColumn("Tên cấu kiện", disabled=True, width="medium"),
-        "Bản vẽ": st.column_config.TextColumn("Bản vẽ", width="medium"),
+        # Tên cấu kiện cần rộng vì mã dài (vd: 01FBB1019-003)
+        "Tên cấu kiện": st.column_config.TextColumn(
+            "Tên cấu kiện", disabled=True, width="large",
+        ),
+        # Bản vẽ thu nhỏ vì thường ngắn (vd: BLB3001, BTG3005)
+        "Bản vẽ": st.column_config.TextColumn(
+            "Bản vẽ", width="small",
+            help="Số bản vẽ kỹ thuật. Nếu thấy sai → vào Import Master → Tinh chỉnh mapping → "
+                 "đổi cột 'name' sang cột Excel chứa số bản vẽ đúng.",
+        ),
         "Rev": st.column_config.TextColumn("Rev", width="small"),
         "Xưởng": st.column_config.TextColumn("Xưởng", width="small"),
         "Mã Gui": st.column_config.TextColumn(
@@ -843,7 +863,6 @@ with st.expander(
                             file_name=f"{nfi['rfi_no']}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             key=f"redl_{nfi['rfi_no']}",
-                            use_container_width=True,
                         )
                 except Exception:
                     st.caption("⚠️ file lỗi")
