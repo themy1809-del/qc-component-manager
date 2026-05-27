@@ -38,37 +38,60 @@ st.set_page_config(
 )
 apply_theme()
 
-# === MỞ RỘNG block-container CHỈ CHO TRANG NÀY ===
-# Override max-width 1400px của theme global để bảng cấu kiện tận dụng hết chiều rộng màn hình.
+# === MỞ RỘNG block-container + THU GỌN BẢNG CHO TRANG NÀY ===
 st.markdown(
     """
     <style>
+    /* Mở rộng main container */
     [data-testid="stMain"] .block-container,
     .block-container {
         max-width: 100% !important;
         padding-left: 1.2rem !important;
         padding-right: 1.2rem !important;
     }
-    /* Bảng data_editor cũng tận dụng full width */
     [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
         width: 100% !important;
     }
-    /* Bỏ giới hạn chiều ngang của các cell trong data_editor */
     [data-testid="stDataEditor"] table {
         width: 100% !important;
-        min-width: 1600px;  /* đủ rộng cho 13 cột — Tên cấu kiện + Mã Gui đã thu nhỏ */
+        min-width: 1500px;
     }
-    /* Header bảng — căn giữa text, chữ đậm hơn */
+    /* Header bảng — chữ đậm + nền nhạt */
     [data-testid="stDataEditor"] thead th {
         text-align: center !important;
         font-weight: 600 !important;
         background: #F1F5F9 !important;
         color: #0F1E40 !important;
+        padding: 6px 4px !important;
     }
-    /* Cell trong bảng — padding gọn */
     [data-testid="stDataEditor"] tbody td {
         padding: 4px 8px !important;
         font-size: 13px !important;
+    }
+    /* ===== THU GỌN 3 CỘT ĐẦU "PHỤ" ===== */
+    /* Cột 1 = index (icon ✏️ + ⋮ của Streamlit) — ẨN hoàn toàn */
+    [data-testid="stDataEditor"] thead th:nth-child(1),
+    [data-testid="stDataEditor"] tbody td:nth-child(1) {
+        max-width: 0 !important;
+        width: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        border: 0 !important;
+    }
+    /* Cột 2 = ✓ checkbox bulk select — siêu gọn */
+    [data-testid="stDataEditor"] thead th:nth-child(2),
+    [data-testid="stDataEditor"] tbody td:nth-child(2) {
+        max-width: 42px !important;
+        width: 42px !important;
+        padding: 2px !important;
+        text-align: center !important;
+    }
+    /* Cột 3 = Stt — gọn */
+    [data-testid="stDataEditor"] thead th:nth-child(3),
+    [data-testid="stDataEditor"] tbody td:nth-child(3) {
+        max-width: 50px !important;
+        width: 50px !important;
+        text-align: center !important;
     }
     </style>
     """,
