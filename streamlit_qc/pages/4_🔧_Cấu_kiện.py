@@ -37,6 +37,32 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 apply_theme()
+
+# === MỞ RỘNG block-container CHỈ CHO TRANG NÀY ===
+# Override max-width 1400px của theme global để bảng cấu kiện tận dụng hết chiều rộng màn hình.
+st.markdown(
+    """
+    <style>
+    [data-testid="stMain"] .block-container,
+    .block-container {
+        max-width: 100% !important;
+        padding-left: 1.2rem !important;
+        padding-right: 1.2rem !important;
+    }
+    /* Bảng data_editor cũng tận dụng full width */
+    [data-testid="stDataFrame"], [data-testid="stDataEditor"] {
+        width: 100% !important;
+    }
+    /* Bỏ giới hạn chiều ngang của các cell trong data_editor */
+    [data-testid="stDataEditor"] table {
+        width: 100% !important;
+        min-width: 1600px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 init_session_state()
 db = get_db()
 
