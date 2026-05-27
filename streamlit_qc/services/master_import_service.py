@@ -244,6 +244,7 @@ def import_master(
                                 idate=new_date, inspector=user_name, result="PASS",
                                 rep="", rfi=rfi_str,
                                 note="Import tu Master (RFI Final co san)",
+                                src="MASTER",
                             )
                             result.final_seeded += 1
 
