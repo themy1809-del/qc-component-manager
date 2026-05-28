@@ -161,10 +161,27 @@ def import_master(
         if extra:
             data["_extra"] = extra
 
-        code = str(data.get("code") or "").strip()
+        # Normalize code: strip whitespace + remove invisible chars (zero-width space,
+        # non-breaking space, BOM…) để tránh UNIQUE conflict khi SQLite normalize.
+        raw_code = str(data.get("code") or "")
+        # Loại ký tự vô hình + control chars (giữ chữ latin/CJK + dấu + dash/dot/underscore)
+        import re as _re_code
+        # Pattern: control chars + Unicode invisible (NBSP, zero-width, BOM, bidi marks)
+        _INV_PATTERN = (
+            "[\x00-\x1F\x7F"
+            "\u00A0"
+            "\u200B-\u200F"
+            "\u202A-\u202E"
+            "\u2060-\u206F"
+            "\uFEFF"
+            "]"
+        )
+        code = _re_code.sub(_INV_PATTERN, "", raw_code).strip()
         if not code or code.lower() == "nan":
             result.skipped += 1
             continue
+        # Cập nhật lại data["code"] để khớp với version đã clean
+        data["code"] = code
 
         # CHECK REV CHANGE
         existing = db.find_component(pid, code)
@@ -189,6 +206,10 @@ def import_master(
                 pass
 
         cid, is_new = db.upsert_component(pid, code, data)
+        if cid < 0:
+            # Edge case: UNIQUE conflict không SELECT lại được → skip an toàn
+            result.skipped += 1
+            continue
         result.written += 1
         if is_new:
             result.new += 1
@@ -253,7 +274,6 @@ def import_master(
         user_name,
         "IMPORT_MASTER",
         "project",
-        pid,
         f"rows={result.total_rows}, written={result.written}, "
         f"new={result.new}, upd={result.updated}, skipped={result.skipped}, "
         f"fitup_seeded={result.fitup_seeded}, final_seeded={result.final_seeded}, "

@@ -779,24 +779,41 @@ class DB:
         code: str,
         data: dict,
     ) -> tuple[int, bool]:
-        """Upsert. Merge data_json (giữ field cũ nếu field mới rỗng)."""
+        """Upsert atomic. Merge data_json (giữ field cũ nếu field mới rỗng).
+
+        Pattern: try INSERT trước → nếu UNIQUE conflict thì UPDATE.
+        Race-safe khi file có dòng trùng mã hoặc khi SQLite normalize ký tự vô hình.
+        """
+        payload = json.dumps(data, ensure_ascii=False, default=str)
+        # Thử INSERT trước
+        try:
+            cur = self.conn.execute(
+                "INSERT INTO components(project_id, code, data_json) VALUES (?, ?, ?)",
+                (pid, code, payload),
+            )
+            return cur.lastrowid, True
+        except sqlite3.IntegrityError:
+            pass  # UNIQUE conflict → fall through tới UPDATE
+        # Đã tồn tại → UPDATE với merge logic
         ex = self.conn.execute(
             "SELECT id, data_json FROM components WHERE project_id=? AND code=?",
             (pid, code),
         ).fetchone()
-        if ex:
-            merged = json.loads(ex["data_json"])
-            merged.update({k: v for k, v in data.items() if v is not None and v != ""})
-            self.conn.execute(
-                "UPDATE components SET data_json=? WHERE id=?",
-                (json.dumps(merged, ensure_ascii=False, default=str), ex["id"]),
+        if ex is None:
+            # Edge case: IntegrityError nhưng SELECT không tìm thấy.
+            # Mã chứa ký tự vô hình → bỏ qua, log để debug.
+            print(
+                f"[upsert_component] IntegrityError nhưng SELECT không match: "
+                f"pid={pid}, code={code!r}. Bỏ qua row."
             )
-            return ex["id"], False
-        cur = self.conn.execute(
-            "INSERT INTO components(project_id, code, data_json) VALUES (?, ?, ?)",
-            (pid, code, json.dumps(data, ensure_ascii=False, default=str)),
+            return -1, False
+        merged = json.loads(ex["data_json"])
+        merged.update({k: v for k, v in data.items() if v is not None and v != ""})
+        self.conn.execute(
+            "UPDATE components SET data_json=? WHERE id=?",
+            (json.dumps(merged, ensure_ascii=False, default=str), ex["id"]),
         )
-        return cur.lastrowid, True
+        return ex["id"], False
 
     def find_component(self, pid: int, code: str):
         return self.conn.execute(
@@ -1325,22 +1342,6 @@ class DB:
 
     def get_share_token(self, token):
         return self.conn.execute(
-            "SELECT * FROM share_tokens WHERE token=?", (token,),
+            "SELECT * FROM share_tokens WHERE token=?",
+            (token,),
         ).fetchone()
-
-    def increment_share_view(self, token):
-        now_expr = "CURRENT_TIMESTAMP" if self.is_postgres else "datetime('now')"
-        self.conn.execute(
-            f"UPDATE share_tokens SET view_count=view_count+1, "
-            f"last_viewed_at={now_expr} WHERE token=?", (token,),
-        )
-
-    def list_share_tokens(self, pid):
-        return self.conn.execute(
-            "SELECT token, label, expires_at, view_count, last_viewed_at, "
-            "created_by, created_at FROM share_tokens WHERE project_id=? "
-            "ORDER BY created_at DESC", (pid,),
-        ).fetchall()
-
-    def delete_share_token(self, token):
-        self.conn.execute("DELETE FROM share_tokens WHERE token=?", (token,))
