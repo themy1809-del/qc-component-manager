@@ -72,7 +72,9 @@ class _PgConnAdapter:
         from psycopg2.extras import RealDictCursor
 
         self._conn = psycopg2.connect(dsn, sslmode="require", connect_timeout=15)
-        self._conn.set_session(autocommit=False)
+        # autocommit=True: moi statement tu commit -> tranh InFailedSqlTransaction
+        # (cac best-effort query loi se khong dau doc transaction cua query sau)
+        self._conn.set_session(autocommit=True)
         self._RealDictCursor = RealDictCursor
 
     def execute(self, query: str, params=()) -> _PgCursorWrapper:
