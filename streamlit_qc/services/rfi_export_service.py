@@ -375,10 +375,11 @@ def export_rfi_file(
             codes_csv = ",".join(c["code"] for c in components)
             note_attached = f"Exported {len(components)} ck: {codes_csv[:480]}"
             db.conn.execute(
-                "INSERT OR IGNORE INTO rfis "
+                "INSERT INTO rfis "
                 "(project_id, component_id, rfi_no, inspection_type, "
                 " proposed_date, submitted_by, response_note, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 'SUBMITTED')",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 'SUBMITTED') "
+                "ON CONFLICT DO NOTHING",
                 (pid, components[0]["id"], rfi_no, inspection_type,
                  today_iso, user_name or "", note_attached),
             )

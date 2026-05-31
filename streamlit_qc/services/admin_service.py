@@ -167,6 +167,13 @@ def backup_db(db: DB) -> bytes:
     Returns:
         Bytes của file .zip để dùng với st.download_button.
     """
+    if getattr(db, "is_postgres", False):
+        raise RuntimeError(
+            "Dữ liệu đang lưu bền trên Supabase (Postgres) và Supabase tự sao lưu — "
+            "không cần backup file .db như SQLite local. "
+            "(Backup tải-về dạng file cho Postgres sẽ bổ sung ở bước sau.)"
+        )
+
     db_path = Path(db.path)
 
     # Force checkpoint WAL để đảm bảo dữ liệu nằm hết trong file .db chính
@@ -205,6 +212,13 @@ def restore_db(db: DB, uploaded_bytes: bytes, user_name: str = "admin") -> dict:
     Returns:
         Dict {success, backup_path, restored_size, error?}
     """
+    if getattr(db, "is_postgres", False):
+        return {
+            "success": False,
+            "error": "Restore từ file .db chỉ áp dụng cho SQLite local. "
+                     "Với Postgres/Supabase, dữ liệu đã nằm trên cloud — khôi phục qua Supabase.",
+        }
+
     db_path = Path(db.path)
     backup_path = db_path.parent / f"{db_path.stem}.bak"
 
