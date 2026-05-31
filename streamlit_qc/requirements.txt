@@ -1,12 +1,11 @@
-streamlit>=1.30
-pandas>=2.0
-openpyxl>=3.1
+streamlit>=1.28.0
+pandas>=2.0.0
+plotly>=5.17.0
+openpyxl>=3.1.0
 pyxlsb>=1.0.10
-plotly>=5.18
+xlrd>=2.0.1
+psycopg2-binary>=2.9.9
+reportlab>=4.0.0
+qrcode>=7.4.2
+pillow>=10.0.0
 python-dateutil>=2.8
-
-# Optional - dùng cho milestone sau:
-# streamlit-authenticator>=0.3  # auth (Milestone 6)
-# sqlalchemy>=2.0               # ORM (Milestone 5+, nếu cần migrate PostgreSQL)
-# pytest>=8.0                   # test (Milestone 6)
-# pytest-cov>=4.1
