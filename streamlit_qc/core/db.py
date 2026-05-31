@@ -87,18 +87,27 @@ class _PgConnAdapter:
         has_returning = "RETURNING" in q_upper_stripped
 
         cur = self._conn.cursor(cursor_factory=self._RealDictCursor)
-        if is_insert and not has_returning:
-            cur.execute(q + " RETURNING id", params)
-            wrapper = _PgCursorWrapper(cur)
+        try:
+            if is_insert and not has_returning:
+                cur.execute(q + " RETURNING id", params)
+                wrapper = _PgCursorWrapper(cur)
+                try:
+                    row = cur.fetchone()
+                    if row and "id" in row:
+                        wrapper.lastrowid = row["id"]
+                except Exception:
+                    pass
+                return wrapper
+            cur.execute(q, params)
+            return _PgCursorWrapper(cur)
+        except Exception:
+            # Roll back aborted transaction so the NEXT query is not poisoned
+            # (best-effort queries upstream swallow errors without rollback).
             try:
-                row = cur.fetchone()
-                if row and "id" in row:
-                    wrapper.lastrowid = row["id"]
+                self._conn.rollback()
             except Exception:
                 pass
-            return wrapper
-        cur.execute(q, params)
-        return _PgCursorWrapper(cur)
+            raise
 
     def executescript(self, script: str) -> None:
         """Split bằng dấu chấm phẩy + execute từng câu (Postgres không có executescript)."""
