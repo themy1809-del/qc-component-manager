@@ -485,9 +485,9 @@ def export_to_excel_pro(
     # ==========================================================
     ws_ins = wb.create_sheet("📋 Inspections")
     df_ins = pd.read_sql_query(
-        "SELECT i.id, c.code 'Mã cấu kiện', i.inspection_type 'Loại', "
-        "i.inspection_date 'Ngày', i.inspector 'Inspector', i.result 'Kết quả', "
-        "i.report_no 'Báo cáo', i.rfi_no 'RFI', i.source_file 'Nguồn' "
+        'SELECT i.id, c.code AS "Mã cấu kiện", i.inspection_type AS "Loại", '
+        'i.inspection_date AS "Ngày", i.inspector AS "Inspector", i.result AS "Kết quả", '
+        'i.report_no AS "Báo cáo", i.rfi_no AS "RFI", i.source_file AS "Nguồn" '
         "FROM inspections i "
         "JOIN components c ON c.id = i.component_id "
         "WHERE i.project_id = ? "
@@ -567,7 +567,7 @@ def export_to_excel(db: DB, pid: int, project_code: str) -> bytes:
 
     # Sheet 4: Inspection by type (thêm để báo cáo nghiệp vụ)
     by_type = pd.read_sql_query(
-        "SELECT inspection_type 'Loại NT', COUNT(*) 'Số inspection' "
+        'SELECT inspection_type AS "Loại NT", COUNT(*) AS "Số inspection" '
         "FROM inspections WHERE project_id=? "
         "GROUP BY inspection_type ORDER BY COUNT(*) DESC",
         db.conn,

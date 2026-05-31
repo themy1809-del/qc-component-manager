@@ -57,6 +57,24 @@ class _PgCursorWrapper:
         return getattr(self._cur, name)
 
 
+class _PgPandasCursor:
+    """Cursor cho pandas.read_sql_query: dich '?' -> '%s'. Cursor thuong (tuple rows)."""
+
+    def __init__(self, cur):
+        self._cur = cur
+
+    def execute(self, query, params=None):
+        q = query.replace("?", "%s")
+        if params is None:
+            self._cur.execute(q)
+        else:
+            self._cur.execute(q, params)
+        return self
+
+    def __getattr__(self, name):
+        return getattr(self._cur, name)
+
+
 class _PgConnAdapter:
     """
     Wrap psycopg2.Connection để có API giống sqlite3.Connection.
@@ -119,6 +137,10 @@ class _PgConnAdapter:
         for stmt in statements:
             cur.execute(stmt)
         cur.close()
+
+    def cursor(self):
+        """Tra ve cursor cho pandas.read_sql_query (dich '?' -> '%s')."""
+        return _PgPandasCursor(self._conn.cursor())
 
     def commit(self):
         self._conn.commit()
