@@ -109,6 +109,29 @@ def import_master(
     # Tập cột Excel đã được map (để loại ra khi gom _extra)
     mapped_excel_cols = {c for c in mapping.values() if c}
 
+    import re as _re_code
+    _INV_PATTERN = (
+        "[\x00-\x1F\x7F"
+        "\u00A0"
+        "\u200B-\u200F"
+        "\u202A-\u202E"
+        "\u2060-\u206F"
+        "\uFEFF"
+        "]"
+    )
+
+    # ⚡ Pre-fetch toàn bộ component hiện có (1 query) thay cho find_component từng dòng
+    existing_map = {
+        r["code"]: r["data_json"]
+        for r in db.conn.execute(
+            "SELECT code, data_json FROM components WHERE project_id=?", (pid,)
+        ).fetchall()
+    }
+
+    seen_codes = set()
+    to_upsert = []   # [(code, data_dict đã merge)]
+    insp_tasks = []  # [(code, is_new, rfi_fitup, date_fitup, rfi_final, date_final)]
+
     for _, row in df.iterrows():
         data = {}
         rfi_fitup_val = None
@@ -141,7 +164,6 @@ def import_master(
             data[fld] = v
 
         # ★ GIỮ TẤT CẢ CỘT CHƯA ĐƯỢC MAP vào data["_extra"]
-        # → phục vụ Dimension/Welding/Paint report cần Length, Width, Material, Spec...
         extra = {}
         for col in row.index:
             if col in mapped_excel_cols:
@@ -152,7 +174,6 @@ def import_master(
             key = str(col).strip()
             if not key or key.lower().startswith("unnamed"):
                 continue
-            # Convert non-JSON-safe types to str
             if hasattr(v, "isoformat"):
                 v = v.isoformat()
             elif not isinstance(v, (str, int, float, bool)):
@@ -161,34 +182,22 @@ def import_master(
         if extra:
             data["_extra"] = extra
 
-        # Normalize code: strip whitespace + remove invisible chars (zero-width space,
-        # non-breaking space, BOM…) để tránh UNIQUE conflict khi SQLite normalize.
         raw_code = str(data.get("code") or "")
-        # Loại ký tự vô hình + control chars (giữ chữ latin/CJK + dấu + dash/dot/underscore)
-        import re as _re_code
-        # Pattern: control chars + Unicode invisible (NBSP, zero-width, BOM, bidi marks)
-        _INV_PATTERN = (
-            "[\x00-\x1F\x7F"
-            "\u00A0"
-            "\u200B-\u200F"
-            "\u202A-\u202E"
-            "\u2060-\u206F"
-            "\uFEFF"
-            "]"
-        )
         code = _re_code.sub(_INV_PATTERN, "", raw_code).strip()
         if not code or code.lower() == "nan":
             result.skipped += 1
             continue
-        # Cập nhật lại data["code"] để khớp với version đã clean
         data["code"] = code
 
-        # CHECK REV CHANGE
-        existing = db.find_component(pid, code)
+        old_json = existing_map.get(code)
+        seen_before = code in seen_codes
+        seen_codes.add(code)
+        is_new = (old_json is None) and not seen_before
+
         new_rev = str(data.get("rev_no") or "").strip()
-        if existing and new_rev:
+        if old_json is not None and new_rev:
             try:
-                old_data = json.loads(existing["data_json"])
+                old_data = json.loads(old_json)
                 old_rev = str(old_data.get("rev_no") or "").strip()
                 if old_rev and new_rev and old_rev != new_rev:
                     result.rev_changed.append({
@@ -205,28 +214,62 @@ def import_master(
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        cid, is_new = db.upsert_component(pid, code, data)
-        if cid < 0:
-            # Edge case: UNIQUE conflict không SELECT lại được → skip an toàn
-            result.skipped += 1
-            continue
-        result.written += 1
-        if is_new:
-            result.new += 1
-        else:
+        # Merge: giữ field cũ nếu field mới rỗng (giống upsert_component)
+        if old_json is not None:
+            try:
+                final_data = json.loads(old_json)
+            except (json.JSONDecodeError, TypeError):
+                final_data = {}
+            final_data.update(
+                {k: v for k, v in data.items() if v is not None and v != ""}
+            )
             result.updated += 1
+        elif seen_before:
+            final_data = data
+            result.updated += 1
+        else:
+            final_data = data
+            result.new += 1
+        result.written += 1
+        to_upsert.append((code, final_data))
 
-        # === Tạo/cập nhật inspection PASS từ cột RFI có sẵn ===
         if has_fitup_col or has_final_col:
+            insp_tasks.append(
+                (code, is_new, rfi_fitup_val, date_fitup_val,
+                 rfi_final_val, date_final_val)
+            )
+
+    # ⚡ BULK upsert toàn bộ component (vài round-trip thay vì hàng nghìn)
+    db.bulk_upsert_components(pid, to_upsert)
+
+    # Inspection seeding — chỉ khi file master có cột RFI Fit-up/Final
+    if (has_fitup_col or has_final_col) and insp_tasks:
+        id_map = {
+            r["code"]: r["id"]
+            for r in db.conn.execute(
+                "SELECT id, code FROM components WHERE project_id=?", (pid,)
+            ).fetchall()
+        }
+        for (code, is_new, rfi_fitup_val, date_fitup_val,
+             rfi_final_val, date_final_val) in insp_tasks:
+            cid = id_map.get(code)
+            if not cid:
+                continue
 
             if has_fitup_col:
                 rfi_str = str(rfi_fitup_val or "").strip()
                 if rfi_str and rfi_str.lower() != "nan":
                     new_date = date_fitup_val or ""
-                    existing_master = _get_master_inspection(db, cid, "FUR") if not is_new else None
+                    existing_master = (
+                        _get_master_inspection(db, cid, "FUR")
+                        if not is_new else None
+                    )
                     if existing_master:
-                        if existing_master["date"] != new_date or existing_master["rfi"] != rfi_str:
-                            _update_inspection(db, existing_master["id"], new_date, rfi_str)
+                        if (existing_master["date"] != new_date
+                                or existing_master["rfi"] != rfi_str):
+                            _update_inspection(
+                                db, existing_master["id"], new_date, rfi_str
+                            )
                             result.fitup_seeded += 1
                         else:
                             result.fitup_skipped_exist += 1
@@ -248,10 +291,16 @@ def import_master(
                 rfi_str = str(rfi_final_val or "").strip()
                 if rfi_str and rfi_str.lower() != "nan":
                     new_date = date_final_val or ""
-                    existing_master = _get_master_inspection(db, cid, "DGRP") if not is_new else None
+                    existing_master = (
+                        _get_master_inspection(db, cid, "DGRP")
+                        if not is_new else None
+                    )
                     if existing_master:
-                        if existing_master["date"] != new_date or existing_master["rfi"] != rfi_str:
-                            _update_inspection(db, existing_master["id"], new_date, rfi_str)
+                        if (existing_master["date"] != new_date
+                                or existing_master["rfi"] != rfi_str):
+                            _update_inspection(
+                                db, existing_master["id"], new_date, rfi_str
+                            )
                             result.final_seeded += 1
                         else:
                             result.final_skipped_exist += 1

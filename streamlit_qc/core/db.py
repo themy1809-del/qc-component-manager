@@ -848,6 +848,51 @@ class DB:
         )
         return ex["id"], False
 
+    def bulk_upsert_components(self, pid: int, records) -> int:
+        """Bulk upsert components. records = list[(code, data_dict)].
+        data_json da merge san o caller. Nhanh tren Postgres (execute_values)
+        — tranh round-trip tung dong. Tra ve so dong xu ly.
+        """
+        if not records:
+            return 0
+        rows = [
+            (pid, code, json.dumps(data, ensure_ascii=False, default=str))
+            for code, data in records
+        ]
+        if self.is_postgres:
+            from psycopg2.extras import execute_values
+            raw = self.conn._conn
+            cur = raw.cursor()
+            try:
+                for i in range(0, len(rows), 1000):
+                    execute_values(
+                        cur,
+                        "INSERT INTO components (project_id, code, data_json) "
+                        "VALUES %s "
+                        "ON CONFLICT (project_id, code) "
+                        "DO UPDATE SET data_json = EXCLUDED.data_json",
+                        rows[i:i + 1000],
+                    )
+                raw.commit()
+            finally:
+                cur.close()
+            return len(rows)
+        for _pid, code, payload in rows:
+            try:
+                self.conn.execute(
+                    "INSERT INTO components(project_id, code, data_json) "
+                    "VALUES (?, ?, ?)",
+                    (_pid, code, payload),
+                )
+            except sqlite3.IntegrityError:
+                self.conn.execute(
+                    "UPDATE components SET data_json=? "
+                    "WHERE project_id=? AND code=?",
+                    (payload, _pid, code),
+                )
+        self.conn.commit()
+        return len(rows)
+
     def find_component(self, pid: int, code: str):
         return self.conn.execute(
             "SELECT * FROM components WHERE project_id=? AND code=?",

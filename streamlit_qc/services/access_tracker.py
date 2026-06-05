@@ -132,8 +132,8 @@ def get_stats_summary(db: DB) -> dict:
     - total_page_views
     """
     if db.is_postgres:
-        today_expr = "date(ts) = CURRENT_DATE"
-        week_expr = "date(ts) >= CURRENT_DATE - INTERVAL '7 days'"
+        today_expr = "ts::date = CURRENT_DATE"
+        week_expr = "ts::date >= CURRENT_DATE - INTERVAL '7 days'"
     else:
         today_expr = "date(ts) = date('now')"
         week_expr = "date(ts) >= date('now', '-7 days')"
@@ -165,8 +165,8 @@ def get_stats_summary(db: DB) -> dict:
 def get_daily_visits(db: DB, days: int = 14) -> list[dict]:
     """Trả về visits per day cho N ngày gần nhất."""
     if db.is_postgres:
-        date_expr = "date(ts)"
-        cutoff = f"date(ts) >= CURRENT_DATE - INTERVAL '{days} days'"
+        date_expr = "ts::date"
+        cutoff = f"ts::date >= CURRENT_DATE - INTERVAL '{days} days'"
     else:
         date_expr = "date(ts)"
         cutoff = f"date(ts) >= date('now', '-{days} days')"
@@ -190,7 +190,7 @@ def get_daily_visits(db: DB, days: int = 14) -> list[dict]:
 def get_top_pages(db: DB, days: int = 7, limit: int = 10) -> list[dict]:
     """Top pages được xem nhiều nhất trong N ngày."""
     if db.is_postgres:
-        cutoff = f"date(ts) >= CURRENT_DATE - INTERVAL '{days} days'"
+        cutoff = f"ts::date >= CURRENT_DATE - INTERVAL '{days} days'"
     else:
         cutoff = f"date(ts) >= date('now', '-{days} days')"
 

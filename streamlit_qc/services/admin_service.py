@@ -160,6 +160,74 @@ def reset_inspections(db: DB, pid: int, user_name: str = "admin") -> int:
 # ====================================================================
 # BACKUP / RESTORE
 # ====================================================================
+def _to_sqlite_val(v):
+    """Chuyen gia tri Postgres -> dang SQLite luu duoc (datetime/Decimal... -> str)."""
+    if v is None or isinstance(v, (int, float, str, bytes)):
+        return v
+    return str(v)
+
+
+def _backup_postgres(db: DB) -> bytes:
+    """Backup Postgres (Supabase) -> file SQLite snapshot -> zip bytes (tai ve duoc)."""
+    import tempfile
+    tmp_path = Path(tempfile.gettempdir()) / f"qc_snapshot_{dt.datetime.now():%Y%m%d_%H%M%S}.db"
+    sq = sqlite3.connect(str(tmp_path))
+    counts = {}
+    try:
+        trows = db.conn.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'public' ORDER BY table_name"
+        ).fetchall()
+        tables = [dict(r)["table_name"] for r in trows]
+    except Exception:
+        tables = []
+    if not tables:
+        tables = [
+            "projects", "components", "inspections", "column_mappings", "audit_log",
+            "users", "comments", "ncrs", "rfis", "itp_templates", "itp_records",
+            "batches", "batch_items", "materials", "material_assignments",
+            "share_tokens", "qc_reports", "access_log",
+        ]
+    for t in tables:
+        try:
+            cur = db.conn.execute('SELECT * FROM "' + t + '"')
+            rows = cur.fetchall()
+        except Exception:
+            continue
+        if rows:
+            cols = list(dict(rows[0]).keys())
+        else:
+            desc = getattr(cur, "description", None)
+            cols = [d[0] for d in desc] if desc else []
+        if not cols:
+            continue
+        col_def = ", ".join('"' + c + '"' for c in cols)
+        sq.execute('CREATE TABLE IF NOT EXISTS "' + t + '" (' + col_def + ')')
+        if rows:
+            ph = ", ".join("?" * len(cols))
+            data = [tuple(_to_sqlite_val(dict(r).get(c)) for c in cols) for r in rows]
+            sq.executemany('INSERT INTO "' + t + '" VALUES (' + ph + ')', data)
+        counts[t] = len(rows)
+    sq.commit()
+    sq.close()
+    db_bytes = tmp_path.read_bytes()
+    try:
+        tmp_path.unlink()
+    except Exception:
+        pass
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("qc_components.db", db_bytes)
+        meta = (
+            "QC Component Manager - Supabase Postgres snapshot\n"
+            f"Created: {dt.datetime.now().isoformat()}\n"
+            f"Tables: {len(counts)}\n"
+            + "\n".join(f"  {t}: {n}" for t, n in counts.items())
+        )
+        zf.writestr("README.txt", meta)
+    return buf.getvalue()
+
+
 def backup_db(db: DB) -> bytes:
     """
     Tạo backup .zip chứa file DB (an toàn với WAL).
@@ -168,11 +236,7 @@ def backup_db(db: DB) -> bytes:
         Bytes của file .zip để dùng với st.download_button.
     """
     if getattr(db, "is_postgres", False):
-        raise RuntimeError(
-            "Dữ liệu đang lưu bền trên Supabase (Postgres) và Supabase tự sao lưu — "
-            "không cần backup file .db như SQLite local. "
-            "(Backup tải-về dạng file cho Postgres sẽ bổ sung ở bước sau.)"
-        )
+        return _backup_postgres(db)
 
     db_path = Path(db.path)
 
