@@ -242,7 +242,7 @@ def import_master(
     # ⚡ BULK upsert toàn bộ component (vài round-trip thay vì hàng nghìn)
     db.bulk_upsert_components(pid, to_upsert)
 
-    # Inspection seeding — chỉ khi file master có cột RFI Fit-up/Final
+    # Inspection seeding — gộp lô (FUR cho Fit-up, DGRP cho Final) thay vì từng dòng
     if (has_fitup_col or has_final_col) and insp_tasks:
         id_map = {
             r["code"]: r["id"]
@@ -250,6 +250,32 @@ def import_master(
                 "SELECT id, code FROM components WHERE project_id=?", (pid,)
             ).fetchall()
         }
+        # Pre-fetch inspection hiện có của các component bị ảnh hưởng (1 query / lô)
+        aff = sorted({id_map[t[0]] for t in insp_tasks if t[0] in id_map})
+        types_by_comp = {}      # cid -> set(types)
+        master_by_comp = {}     # (cid, type) -> {id, date, rfi}
+        for k in range(0, len(aff), 900):
+            chunk = aff[k:k + 900]
+            ph = ",".join("?" * len(chunk))
+            for r in db.conn.execute(
+                "SELECT id, component_id, inspection_type, source_file, "
+                "inspection_date, rfi_no FROM inspections "
+                "WHERE component_id IN (" + ph + ") ORDER BY component_id, id",
+                tuple(chunk),
+            ).fetchall():
+                cid_ = r["component_id"]
+                t = r["inspection_type"]
+                types_by_comp.setdefault(cid_, set()).add(t)
+                if r["source_file"] == "MASTER":
+                    master_by_comp[(cid_, t)] = {
+                        "id": r["id"],
+                        "date": r["inspection_date"] or "",
+                        "rfi": r["rfi_no"] or "",
+                    }
+
+        to_add = []       # records cho bulk_add_inspections
+        to_update = []    # (ins_id, new_date, new_rfi)
+
         for (code, is_new, rfi_fitup_val, date_fitup_val,
              rfi_final_val, date_final_val) in insp_tasks:
             cid = id_map.get(code)
@@ -260,63 +286,68 @@ def import_master(
                 rfi_str = str(rfi_fitup_val or "").strip()
                 if rfi_str and rfi_str.lower() != "nan":
                     new_date = date_fitup_val or ""
-                    existing_master = (
-                        _get_master_inspection(db, cid, "FUR")
-                        if not is_new else None
-                    )
-                    if existing_master:
-                        if (existing_master["date"] != new_date
-                                or existing_master["rfi"] != rfi_str):
-                            _update_inspection(
-                                db, existing_master["id"], new_date, rfi_str
-                            )
+                    em = master_by_comp.get((cid, "FUR"))
+                    if em:
+                        if em["date"] != new_date or em["rfi"] != rfi_str:
+                            to_update.append((em["id"], new_date, rfi_str))
                             result.fitup_seeded += 1
                         else:
                             result.fitup_skipped_exist += 1
+                    elif "FUR" in types_by_comp.get(cid, ()):
+                        result.fitup_skipped_exist += 1
                     else:
-                        existing_types = _existing_inspection_types(db, cid)
-                        if "FUR" in existing_types:
-                            result.fitup_skipped_exist += 1
-                        else:
-                            db.add_inspection(
-                                pid=pid, cid=cid, itype="FUR",
-                                idate=new_date, inspector=user_name, result="PASS",
-                                rep="", rfi=rfi_str,
-                                note="Import tu Master (RFI Fit-up co san)",
-                                src="MASTER",
-                            )
-                            result.fitup_seeded += 1
+                        to_add.append(
+                            (pid, cid, "FUR", new_date, user_name, "PASS",
+                             "", rfi_str, "Import tu Master (RFI Fit-up co san)", "MASTER")
+                        )
+                        types_by_comp.setdefault(cid, set()).add("FUR")
+                        result.fitup_seeded += 1
 
             if has_final_col:
                 rfi_str = str(rfi_final_val or "").strip()
                 if rfi_str and rfi_str.lower() != "nan":
                     new_date = date_final_val or ""
-                    existing_master = (
-                        _get_master_inspection(db, cid, "DGRP")
-                        if not is_new else None
-                    )
-                    if existing_master:
-                        if (existing_master["date"] != new_date
-                                or existing_master["rfi"] != rfi_str):
-                            _update_inspection(
-                                db, existing_master["id"], new_date, rfi_str
-                            )
+                    em = master_by_comp.get((cid, "DGRP"))
+                    if em:
+                        if em["date"] != new_date or em["rfi"] != rfi_str:
+                            to_update.append((em["id"], new_date, rfi_str))
                             result.final_seeded += 1
                         else:
                             result.final_skipped_exist += 1
+                    elif "DGRP" in types_by_comp.get(cid, ()):
+                        result.final_skipped_exist += 1
                     else:
-                        existing_types = _existing_inspection_types(db, cid)
-                        if "DGRP" in existing_types:
-                            result.final_skipped_exist += 1
-                        else:
-                            db.add_inspection(
-                                pid=pid, cid=cid, itype="DGRP",
-                                idate=new_date, inspector=user_name, result="PASS",
-                                rep="", rfi=rfi_str,
-                                note="Import tu Master (RFI Final co san)",
-                                src="MASTER",
-                            )
-                            result.final_seeded += 1
+                        to_add.append(
+                            (pid, cid, "DGRP", new_date, user_name, "PASS",
+                             "", rfi_str, "Import tu Master (RFI Final co san)", "MASTER")
+                        )
+                        types_by_comp.setdefault(cid, set()).add("DGRP")
+                        result.final_seeded += 1
+
+        # Bulk update inspection MASTER cũ thay đổi date/rfi (không đổi status)
+        if to_update:
+            _upd = [(d, r, i) for (i, d, r) in to_update]
+            if db.is_postgres:
+                from psycopg2.extras import execute_batch
+                _raw = db.conn._conn
+                _cur = _raw.cursor()
+                try:
+                    execute_batch(
+                        _cur,
+                        "UPDATE inspections SET inspection_date=%s, rfi_no=%s WHERE id=%s",
+                        _upd, page_size=200,
+                    )
+                    _raw.commit()
+                finally:
+                    _cur.close()
+            else:
+                db.conn.executemany(
+                    "UPDATE inspections SET inspection_date=?, rfi_no=? WHERE id=?", _upd
+                )
+                db.conn.commit()
+
+        # Bulk insert inspection mới + tính lại status (gộp lô)
+        db.bulk_add_inspections(to_add)
 
     db.conn.commit()
     db.log(
