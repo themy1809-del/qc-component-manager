@@ -162,6 +162,36 @@ def _is_postgres_url(s: str) -> bool:
 # =====================================================================
 # Main DB class — public API giữ nguyên với code hiện tại
 # =====================================================================
+def _compute_status(inspections):
+    """Tính status cuối của 1 component từ list inspection (theo thứ tự id).
+    inspections: list[(inspection_type, result)]. Khớp logic add_inspection.
+    """
+    status = "PENDING"
+    passed = set()
+    for itype, result in inspections:
+        if result == "PASS":
+            passed.add(itype)
+        if result == "FAIL":
+            new = "FAILED"
+        elif result == "PASS":
+            if itype == "DGRP":
+                new = "ACCEPTED"
+            elif itype == "FUR":
+                new = "IN_PROGRESS"
+            elif itype in ACCEPTANCE_TYPES:
+                new = "PASSED"
+            else:
+                new = "IN_PROGRESS"
+        else:
+            new = "IN_PROGRESS"
+        if itype in ACCEPTANCE_TYPES and ACCEPTANCE_TYPES.issubset(passed):
+            new = "ACCEPTED"
+        if status == "ACCEPTED" and new != "FAILED":
+            new = "ACCEPTED"
+        status = new
+    return status
+
+
 class DB:
     """
     Wrapper hỗ trợ cả SQLite (local file) và PostgreSQL (Supabase).
@@ -892,6 +922,76 @@ class DB:
                 )
         self.conn.commit()
         return len(rows)
+
+    def bulk_add_inspections(self, records) -> int:
+        """records = list[(pid,cid,itype,idate,inspector,result,rep,rfi,note,src)].
+        Bulk insert inspections + recompute status (giữ logic ACCEPTED).
+        Trả về số inspection đã thêm. Nhanh trên Postgres (execute_values).
+        """
+        if not records:
+            return 0
+        if self.is_postgres:
+            from psycopg2.extras import execute_values
+            raw = self.conn._conn
+            cur = raw.cursor()
+            try:
+                for i in range(0, len(records), 1000):
+                    execute_values(
+                        cur,
+                        "INSERT INTO inspections (project_id, component_id, "
+                        "inspection_type, inspection_date, inspector, result, "
+                        "report_no, rfi_no, note, source_file) VALUES %s",
+                        records[i:i + 1000],
+                    )
+                raw.commit()
+            finally:
+                cur.close()
+        else:
+            self.conn.executemany(
+                "INSERT INTO inspections(project_id, component_id, inspection_type, "
+                "inspection_date, inspector, result, report_no, rfi_no, note, "
+                "source_file) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                records,
+            )
+            self.conn.commit()
+        self._recompute_status(sorted({r[1] for r in records}))
+        return len(records)
+
+    def _recompute_status(self, cids) -> None:
+        """Tính lại status cho các component bị ảnh hưởng (theo lô)."""
+        if not cids:
+            return
+        for k in range(0, len(cids), 900):
+            chunk = cids[k:k + 900]
+            ph = ",".join("?" * len(chunk))
+            rows = self.conn.execute(
+                "SELECT component_id, inspection_type, result FROM inspections "
+                "WHERE component_id IN (" + ph + ") ORDER BY component_id, id",
+                tuple(chunk),
+            ).fetchall()
+            by_comp = {}
+            for r in rows:
+                by_comp.setdefault(r["component_id"], []).append(
+                    (r["inspection_type"], r["result"])
+                )
+            updates = [(_compute_status(by_comp.get(cid, [])), cid) for cid in chunk]
+            if self.is_postgres:
+                from psycopg2.extras import execute_batch
+                raw = self.conn._conn
+                cur = raw.cursor()
+                try:
+                    execute_batch(
+                        cur, "UPDATE components SET status=%s WHERE id=%s",
+                        updates, page_size=200,
+                    )
+                    raw.commit()
+                finally:
+                    cur.close()
+            else:
+                self.conn.executemany(
+                    "UPDATE components SET status=? WHERE id=?", updates
+                )
+                self.conn.commit()
 
     def find_component(self, pid: int, code: str):
         return self.conn.execute(

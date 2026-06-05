@@ -166,8 +166,17 @@ def import_daily(
     result = DailyImportResult(total_rows=len(df))
     date_fallback = _resolve_date(None, manual_date, source_file)
     src_basename = os.path.basename(source_file)
-
     code_col = mapping["code"]
+
+    # ⚡ Pre-fetch toàn bộ component (code → id) 1 query, match trong Python
+    code_to_id = {
+        r["code"]: r["id"]
+        for r in db.conn.execute(
+            "SELECT id, code FROM components WHERE project_id=?", (pid,)
+        ).fetchall()
+    }
+
+    records = []  # [(pid, cid, itype, idate, inspector, result, rep, rfi, note, src)]
 
     for _, row in df.iterrows():
         # --- 1. Validate code ---
@@ -183,13 +192,13 @@ def import_daily(
             result.skipped += 1
             continue
 
-        # --- 2. Tìm component bằng 3 candidates ---
-        comp = None
+        # --- 2. Tìm component bằng 3 candidates (dùng map đã pre-fetch) ---
+        cid = None
         for cand in _generate_match_candidates(code):
-            comp = db.find_component(pid, cand)
-            if comp:
+            cid = code_to_id.get(cand)
+            if cid:
                 break
-        if not comp:
+        if not cid:
             result.not_found += 1
             if len(result.unmatched_codes) < 50:
                 result.unmatched_codes.append(code)
@@ -237,22 +246,24 @@ def import_daily(
         if inspection_type == "DGRP":
             types = parse_remark_types(note) or ["DIR"]
             for t in types:
-                db.add_inspection(
-                    pid, comp["id"], t, idate, inspector, rv,
-                    report_no, rfi_no, note, src_basename,
+                records.append(
+                    (pid, cid, t, idate, inspector, rv,
+                     report_no, rfi_no, note, src_basename)
                 )
                 result.inspections_added += 1
         else:
-            db.add_inspection(
-                pid, comp["id"], inspection_type, idate, inspector, rv,
-                report_no, rfi_no, note, src_basename,
+            records.append(
+                (pid, cid, inspection_type, idate, inspector, rv,
+                 report_no, rfi_no, note, src_basename)
             )
             result.inspections_added += 1
 
         result.matched_components += 1
 
-    # Commit + audit
-    db.conn.commit()
+    # ⚡ Bulk insert inspections + recompute status (vài round-trip thay vì hàng nghìn)
+    db.bulk_add_inspections(records)
+
+    # Audit
     db.log(
         user_name,
         "IMPORT_DAILY",
