@@ -53,7 +53,7 @@ def get_forecast(db: DB, pid: int) -> ForecastData:
     if db.is_postgres:
         cutoff_sql = (
             "AND inspection_date IS NOT NULL AND inspection_date != '' "
-            "AND inspection_date::date >= CURRENT_DATE - INTERVAL '28 days'"
+            "AND CASE WHEN inspection_date ~ '^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' THEN to_date(substr(inspection_date,1,10),'YYYY-MM-DD') END >= CURRENT_DATE - INTERVAL '28 days'"
         )
     else:
         cutoff_sql = (
@@ -127,8 +127,8 @@ def get_scurve(db: DB, pid: int, days: int = 90) -> list[dict]:
         return []
 
     if db.is_postgres:
-        date_expr = "i.inspection_date::date"
-        cutoff = f"i.inspection_date::date >= CURRENT_DATE - INTERVAL '{days} days'"
+        date_expr = "CASE WHEN i.inspection_date ~ '^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' THEN to_date(substr(i.inspection_date,1,10),'YYYY-MM-DD') END"
+        cutoff = f"CASE WHEN i.inspection_date ~ '^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' THEN to_date(substr(i.inspection_date,1,10),'YYYY-MM-DD') END >= CURRENT_DATE - INTERVAL '{days} days'"
     else:
         date_expr = "date(i.inspection_date)"
         cutoff = f"date(i.inspection_date) >= date('now', '-{days} days')"

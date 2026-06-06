@@ -165,7 +165,7 @@ def get_inspection_trend(
         List {date (ISO), type, count} sort theo date asc
     """
     if db.is_postgres:
-        date_expr = "(COALESCE(NULLIF(inspection_date,''), imported_at::text))::date"
+        date_expr = "COALESCE(CASE WHEN inspection_date ~ '^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' THEN to_date(substr(inspection_date,1,10),'YYYY-MM-DD') END, imported_at::date)"
         cutoff_expr = f"(CURRENT_DATE - INTERVAL '{days} days')::date"
     else:
         date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at))"
@@ -200,7 +200,7 @@ def get_inspector_performance(
     Top 20 inspector theo số lượng cao nhất.
     """
     if db.is_postgres:
-        date_expr = "(COALESCE(NULLIF(inspection_date,''), imported_at::text))::date"
+        date_expr = "COALESCE(CASE WHEN inspection_date ~ '^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' THEN to_date(substr(inspection_date,1,10),'YYYY-MM-DD') END, imported_at::date)"
         cutoff_expr = f"(CURRENT_DATE - INTERVAL '{days} days')::date"
     else:
         date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at))"
@@ -269,7 +269,7 @@ def compare_projects(db: DB, project_ids: list[int]) -> list[dict]:
     # 3. Inspections 7 ngày qua per project
     if db.is_postgres:
         cutoff = "(CURRENT_DATE - INTERVAL '7 days')::date"
-        date_expr = "(COALESCE(NULLIF(inspection_date,''), imported_at::text))::date"
+        date_expr = "COALESCE(CASE WHEN inspection_date ~ '^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' THEN to_date(substr(inspection_date,1,10),'YYYY-MM-DD') END, imported_at::date)"
     else:
         cutoff = "date('now', '-7 days')"
         date_expr = "date(COALESCE(NULLIF(inspection_date,''), imported_at))"
