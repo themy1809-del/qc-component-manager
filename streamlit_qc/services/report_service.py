@@ -76,8 +76,8 @@ def get_inspection_date_range(db: DB, pid: int) -> tuple[dt.date | None, dt.date
 
     if row and row["mn"]:
         try:
-            mn = dt.date.fromisoformat(row["mn"][:10])
-            mx = dt.date.fromisoformat(row["mx"][:10])
+            mn = dt.date.fromisoformat(str(row["mn"])[:10])
+            mx = dt.date.fromisoformat(str(row["mx"])[:10])
             return mn, mx
         except ValueError:
             pass

@@ -265,7 +265,7 @@ def get_overdue_components(
         if not fitup_iso:
             continue
         try:
-            fitup_date = dt.date.fromisoformat(fitup_iso[:10])
+            fitup_date = dt.date.fromisoformat(str(fitup_iso)[:10])
         except (ValueError, TypeError):
             continue
         days_diff = (today - fitup_date).days

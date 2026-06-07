@@ -96,8 +96,8 @@ def get_forecast(db: DB, pid: int) -> ForecastData:
     ).fetchall()
     deltas = []
     for r in rows:
-        f = r["fur_d"] or ""
-        d = r["dgrp_d"] or ""
+        f = str(r["fur_d"] or "")
+        d = str(r["dgrp_d"] or "")
         if len(f) >= 10 and len(d) >= 10:
             try:
                 df = dt.date.fromisoformat(f[:10])

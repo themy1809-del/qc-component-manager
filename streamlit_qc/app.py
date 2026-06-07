@@ -683,7 +683,7 @@ if selected:
                 t_show = "Fit-up" if t == "FUR" else ("Final" if t == "DGRP" else t)
                 inspector = a.get("inspector") or "—"
                 d = a.get("inspection_date") or a.get("imported_at") or ""
-                d10 = d[:10] if d else "—"
+                d10 = str(d)[:10] if d else "—"
                 try:
                     d_show = dt.date.fromisoformat(d10).strftime("%d/%m") if d10 != "—" else "—"
                 except Exception:
