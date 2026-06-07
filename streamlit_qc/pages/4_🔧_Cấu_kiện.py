@@ -188,6 +188,15 @@ with flt2_col1:
 def _get_overdue_cached(_db, pid_in: int, threshold: int = 7) -> list[dict]:
     return component_service.get_overdue_components(_db, pid_in, threshold)
 
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _list_components_cached(_db, pid_in: int, status_in: str, search_in: str, filters_key: tuple):
+    """Cache 60s — tránh load lại 18k dòng mỗi lần bấm bất kỳ widget nào."""
+    return component_service.list_components(
+        _db, pid_in, status=status_in, search=search_in,
+        dropdown_filters=dict(filters_key) if filters_key else None,
+    )
+
 overdue_ids: set[int] = set()
 if only_overdue:
     overdue_list = _get_overdue_cached(db, pid, 7)
@@ -198,7 +207,7 @@ if only_overdue:
 
 dropdown_filters = {}
 if show_filters:
-    pre_query = component_service.list_components(db, pid, status=status, search=search)
+    pre_query = _list_components_cached(db, pid, status, search, ())
     uv = pre_query.unique_values
     cols = st.columns(len(COMPONENT_FILTER_FIELDS))
     for col, (field, label) in zip(cols, COMPONENT_FILTER_FIELDS):
@@ -228,8 +237,8 @@ _load_placeholder.markdown(
     """,
     unsafe_allow_html=True,
 )
-data = component_service.list_components(
-    db, pid, status=status, search=search, dropdown_filters=dropdown_filters,
+data = _list_components_cached(
+    db, pid, status, search, tuple(sorted(dropdown_filters.items())),
 )
 _load_placeholder.empty()
 
@@ -264,6 +273,28 @@ if not data.rows:
     st.info("Không có cấu kiện nào khớp bộ lọc.")
     st.stop()
 
+# === PHÂN TRANG: chỉ render 1 trang để bảng nhẹ (18k dòng → ì trình duyệt) ===
+_total_rows = len(data.rows)
+_pgc1, _pgc2, _pgc3 = st.columns([1.2, 1.2, 3])
+with _pgc1:
+    _page_size = st.selectbox(
+        "Số dòng / trang", [200, 500, 1000, 2000], index=1, key="comp_page_size"
+    )
+_n_pages = max(1, -(-_total_rows // _page_size))
+with _pgc2:
+    _page = st.number_input(
+        f"Trang (1–{_n_pages})", min_value=1, max_value=_n_pages, value=1, step=1
+    )
+_start = (int(_page) - 1) * _page_size
+_end = min(_start + _page_size, _total_rows)
+with _pgc3:
+    st.markdown(
+        f"<div style='padding-top:34px;color:#64748b;'>Hiển thị "
+        f"<b>{_start + 1:,}–{_end:,}</b> / <b>{_total_rows:,}</b> dòng</div>",
+        unsafe_allow_html=True,
+    )
+_page_rows = data.rows[_start:_end]
+
 # Emoji cho từng inspection result
 def _result_label(result: str) -> str:
     """Convert PASS/FAIL/RECHECK → emoji + text. '' = chưa KT."""
@@ -293,7 +324,7 @@ df_table = pd.DataFrame([
     {
         "id": r.id,
         "✓": False,  # Checkbox cho bulk update
-        "Stt": idx + 1,
+        "Stt": _start + idx + 1,
         "Tên cấu kiện": r.code,
         "Bản vẽ": r.name,
         "Rev": r.rev_no,
@@ -306,10 +337,10 @@ df_table = pd.DataFrame([
         "Ngày Final": getattr(r, "final_date", ""),
         "Người KT Final": getattr(r, "final_inspector", ""),
     }
-    for idx, r in enumerate(data.rows)
+    for idx, r in enumerate(_page_rows)
 ])
 
-SNAP_KEY = f"comp_snapshot_{pid}_{status}_{search}_{'_'.join(dropdown_filters.values())}"
+SNAP_KEY = f"comp_snapshot_{pid}_{status}_{search}_{'_'.join(dropdown_filters.values())}_{_page}_{_page_size}"
 if SNAP_KEY not in st.session_state:
     st.session_state[SNAP_KEY] = df_table.copy()
 
