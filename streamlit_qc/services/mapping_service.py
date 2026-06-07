@@ -46,6 +46,13 @@ VIOLA_MAPPING: dict[str, str] = {
     "rev_no": "Rev No ",
     "grid_position": "Grid Position",
     "elevation": "Elevation",
+    # === 4 cột inspection đã NT sẵn trong PKL VIOLA ===
+    # Header thật có hậu tố số RFI mẫu (vd "RFI No-FUR\n200POR241141-VIOLA-RFI-A0")
+    # → apply_hardcoded_mapping sẽ prefix-match (xem bên dưới).
+    "rfi_fitup_done": "RFI No-FUR",
+    "date_fitup_done": "Date-FUR",
+    "rfi_final_done": "RFI No-DIR+VIR",
+    "date_final_done": "Date-DIR+VIR",
 }
 VIOLA_DEFAULT_HEADER_ROW = 4
 VIOLA_DEFAULT_SHEET = "PKL"
@@ -158,6 +165,16 @@ def apply_hardcoded_mapping(
         target = expected.replace("\n", " ").strip().lower()
         if target in norm_lookup:
             matched[field] = norm_lookup[target]
+            continue
+        # Prefix-match: header thật có hậu tố thay đổi theo file
+        # (vd "RFI No-FUR\n200POR241141-VIOLA-RFI-A0" → expected "RFI No-FUR").
+        # Chỉ nhận khi DUY NHẤT 1 header bắt đầu bằng expected — tránh match nhầm.
+        candidates = [
+            h for norm, h in norm_lookup.items()
+            if norm.startswith(target + " ") or norm.startswith(target + "\n")
+        ]
+        if len(candidates) == 1:
+            matched[field] = candidates[0]
     return matched
 
 

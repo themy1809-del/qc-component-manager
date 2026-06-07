@@ -110,7 +110,11 @@ SMART_KEYWORDS: dict[str, list[str]] = {
     # - "punch no" thứ 3 (variant ngắn).
     # - "tên cấu kiện" XUỐNG SAU vì có file có cột "Tên cấu kiện cũ" gây nhầm (cột parent, ~46 unique).
     # Lưu ý: smart_match_columns sẽ tự loại bỏ header chứa "cũ"/"old"/"backup"/"mới"/"new".
-    "code":      ["tên hồ sơ", "ten ho so", "member punch no", "punch no", "piece mark", "piece id", "item code", "mã chi tiết", "ma chi tiet", "tên cấu kiện", "ten cau kien", "unique"],
+    # "member punch no tên hồ sơ" (full, exact) đứng ĐẦU: file VIOLA có 2 cột
+    # cùng chữ "Member Punch No" — cột "Member Punch No\nTên hồ sơ" (piece-level,
+    # đúng, ~33k unique) và cột "Member Punch No" (vùng check, chỉ ~2k unique).
+    # Exact match rank 0 = 100 điểm → luôn thắng exact "member punch no" (≤98).
+    "code":      ["member punch no tên hồ sơ", "member punch no ten ho so", "tên hồ sơ", "ten ho so", "member punch no", "punch no", "piece mark", "piece id", "item code", "mã chi tiết", "ma chi tiet", "tên cấu kiện", "ten cau kien", "unique"],
     "member_no": ["member no", "mã cấu kiện", "ma cau kien", "item no", "part no", "mark no"],
     "name":      ["tên bản vẽ", "ten ban ve", "drawing no", "drawing number", "tên hạng mục", "ten hang muc", "drawing", "ten bv", "item name", "drawing name"],
     "zone":      ["zone", "khu vực", "khu vuc", "area"],
