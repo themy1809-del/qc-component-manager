@@ -889,6 +889,12 @@ class DB:
             (pid, code, json.dumps(data, ensure_ascii=False, default=str))
             for code, data in records
         ]
+        # Khử trùng lặp theo (project_id, code) — giữ bản ghi CUỐI (last-wins).
+        # Postgres ON CONFLICT DO UPDATE lỗi nếu 1 batch có 2 dòng trùng key.
+        _dedup = {}
+        for _r in rows:
+            _dedup[(_r[0], _r[1])] = _r
+        rows = list(_dedup.values())
         if self.is_postgres:
             from psycopg2.extras import execute_values
             raw = self.conn._conn
