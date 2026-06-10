@@ -137,11 +137,12 @@ with flt_col2:
     # Pre-set search query nếu user click từ Global Search ở Trang chủ
     _preset_search = st.session_state.pop("preset_search_query", None)
     search = st.text_input(
-        "🔎 Tìm mã cấu kiện",
+        "🔎 Tìm mã / bản vẽ",
         value=_preset_search or "",
-        placeholder="vd: 01BTG hoặc TB001",
+        placeholder="vd: 01BTG · hoặc dán nhiều mã: TB001, TB002, TB003",
         key="search_input",
-        help="Gõ và Enter (hoặc bấm 🔍 Tìm) để lọc theo mã cấu kiện.",
+        help="1 từ khoá = tìm trong Mã + Bản vẽ + Member No (không phân biệt hoa thường). "
+             "Dán NHIỀU mã cách nhau bởi dấu phẩy / dấu cách / xuống dòng = lọc đúng các mã đó.",
     )
 with flt_col_btn:
     st.write("")
@@ -178,7 +179,7 @@ with flt2_col1:
     daily_filter = st.selectbox(
         "🗂 Lọc theo file daily",
         ["Tất cả", "Đã có Fit-up", "Chưa có Fit-up",
-         "Đã có Final", "Chưa có Final"],
+         "Đã có Final", "Chưa có Final", "⚠ Có Final, thiếu Fit-up"],
         key="flt_daily",
         help="Lọc theo trạng thái import file daily (cột Import Fit-up / Import Final).",
     )
@@ -260,6 +261,10 @@ elif daily_filter == "Đã có Final":
     data.rows = [r for r in data.rows if getattr(r, "final_imported_at", "")]
 elif daily_filter == "Chưa có Final":
     data.rows = [r for r in data.rows if not getattr(r, "final_imported_at", "")]
+elif daily_filter == "⚠ Có Final, thiếu Fit-up":
+    # Bỏ sót khâu: đã nghiệm thu Final nhưng không có hồ sơ Fit-up
+    data.rows = [r for r in data.rows
+                 if getattr(r, "final_status", "") and not getattr(r, "fitup_status", "")]
 
 status_label = "tất cả trạng thái" if status == "ALL" else STATUS_LABELS.get(status, status)
 caption_parts = [
@@ -341,6 +346,7 @@ df_table = pd.DataFrame([
         "Kiểm tra final": _result_label(getattr(r, "final_status", "")),
         "Ngày Final": getattr(r, "final_date", ""),
         "Người KT Final": getattr(r, "final_inspector", ""),
+        "Ghi chú": getattr(r, "note", ""),
     }
     for idx, r in enumerate(_page_rows)
 ])
@@ -350,7 +356,7 @@ if SNAP_KEY not in st.session_state:
     st.session_state[SNAP_KEY] = df_table.copy()
 
 st.markdown(
-    "💡 *Click ô Bản vẽ / Revision / Xưởng để sửa. "
+    "💡 *Click ô Bản vẽ / Revision / Xưởng / Ghi chú để sửa. "
     "Fit-up + Final + ngày tự động cập nhật từ Import Daily.*"
 )
 
@@ -401,6 +407,10 @@ edited = st.data_editor(
         "Ngày Final": st.column_config.TextColumn(
             "Ngày Final", disabled=True, width="small",
             help="Ngày kiểm tra Final.",
+        ),
+        "Ghi chú": st.column_config.TextColumn(
+            "Ghi chú", width="medium",
+            help="Ghi chú QC — gõ trực tiếp vào ô rồi bấm 💾 Lưu thay đổi.",
         ),
         "Người KT Final": st.column_config.TextColumn(
             "Người KT Final", disabled=True, width="medium",
@@ -707,7 +717,7 @@ if n_selected > 0:
     with bk1:
         bulk_field = st.selectbox(
             "Cột cần đổi",
-            ["Xưởng", "Bản vẽ", "Rev"],
+            ["Xưởng", "Bản vẽ", "Rev", "Ghi chú"],
             key="bulk_field",
         )
     with bk2:
@@ -724,7 +734,8 @@ if n_selected > 0:
             type="primary", use_container_width=True,
             disabled=(not bulk_value.strip()),
         ):
-            UI_TO_FLD = {"Xưởng": "workshop", "Bản vẽ": "name", "Rev": "rev_no"}
+            UI_TO_FLD = {"Xưởng": "workshop", "Bản vẽ": "name",
+                         "Rev": "rev_no", "Ghi chú": "note"}
             fld = UI_TO_FLD[bulk_field]
             user = st.session_state[S_CURRENT_USER]
             n_ok, n_fail = 0, 0
@@ -798,9 +809,9 @@ snapshot = st.session_state[SNAP_KEY]
 edited_indexed = edited.set_index("id")
 snap_indexed = snapshot.set_index("id")
 changes = []
-EDITABLE_COLS = ["Bản vẽ", "Rev", "Xưởng"]
+EDITABLE_COLS = ["Bản vẽ", "Rev", "Xưởng", "Ghi chú"]
 UI_COL_TO_SERVICE = {
-    "Bản vẽ": "name", "Rev": "rev_no", "Xưởng": "workshop",
+    "Bản vẽ": "name", "Rev": "rev_no", "Xưởng": "workshop", "Ghi chú": "note",
 }
 
 for cid in edited_indexed.index:

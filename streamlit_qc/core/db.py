@@ -1011,7 +1011,17 @@ class DB:
         "zone", "phase", "workshop", "type", "rev_no", "guid",
         "manual_nfi", "manual_insp_date", "manual_drawing",
         "drawing", "member_no", "section",
+        "material", "weight_kg", "length_mm", "manual_note",
     )
+
+    def slim_json_expr(self, col: str = "data_json") -> str:
+        """SQL expression: data_json rút gọn còn LIST_JSON_FIELDS."""
+        pairs = ", ".join(
+            f"'{f}', {self._json_field_expr(f, col)}" for f in self.LIST_JSON_FIELDS
+        )
+        if self.is_postgres:
+            return f"jsonb_build_object({pairs})::text"
+        return f"json_object({pairs})"
 
     def _json_field_expr(self, f: str, col: str = "data_json") -> str:
         if self.is_postgres:
@@ -1031,13 +1041,7 @@ class DB:
         data_json trả về đã RÚT GỌN còn LIST_JSON_FIELDS (giảm ~50x dữ liệu
         tải từ DB → nhanh + đỡ tốn RAM). json_filters lọc thẳng trong SQL.
         """
-        pairs = ", ".join(
-            f"'{f}', {self._json_field_expr(f)}" for f in self.LIST_JSON_FIELDS
-        )
-        if self.is_postgres:
-            dj = f"jsonb_build_object({pairs})::text"
-        else:
-            dj = f"json_object({pairs})"
+        dj = self.slim_json_expr()
         q = (f"SELECT id, code, status, {dj} AS data_json "
              f"FROM components WHERE project_id=?")
         args: list = [pid]
@@ -1045,8 +1049,22 @@ class DB:
             q += " AND status=?"
             args.append(status)
         if search:
-            q += " AND code LIKE ?"
-            args.append(f"%{search}%")
+            import re as _re
+            like = "ILIKE" if self.is_postgres else "LIKE"
+            toks = [t for t in _re.split(r"[,;\s]+", str(search).strip()) if t]
+            if len(toks) > 1:
+                # Dán danh sách mã (phẩy / xuống dòng / dấu cách) → match bất kỳ mã nào
+                ors = " OR ".join(f"code {like} ?" for _ in toks)
+                q += f" AND ({ors})"
+                args.extend(f"%{t}%" for t in toks)
+            elif toks:
+                # 1 từ khoá → tìm cả mã + bản vẽ + member no
+                t = f"%{toks[0]}%"
+                dexpr = self._json_field_expr("drawing")
+                mexpr = self._json_field_expr("member_no")
+                q += (f" AND (code {like} ? OR {dexpr} {like} ? "
+                      f"OR {mexpr} {like} ?)")
+                args.extend([t, t, t])
         for f, val in (json_filters or {}).items():
             if f in self.LIST_JSON_FIELDS and val:
                 q += f" AND {self._json_field_expr(f)} = ?"

@@ -44,6 +44,7 @@ class ComponentRow:
     fitup_inspector: str = ""  # tên inspector của lần Fit-up gần nhất
     final_inspector: str = ""  # tên inspector của lần Final gần nhất
     guid: str = ""             # Mã GUID/định danh duy nhất từ master data_json
+    note: str = ""             # Ghi chú QC (manual_note, sửa trực tiếp trong bảng)
 
 
 @dataclass
@@ -446,6 +447,7 @@ def list_components(
             fitup_inspector=fitup_ins,
             final_inspector=final_ins,
             guid=guid_val,
+            note=str(data.get("manual_note", "") or ""),
         ))
 
     result.rows = rows_after_dropdown
@@ -466,6 +468,7 @@ INLINE_EDIT_FIELD_MAP: dict[str, str] = {
     "workshop": "workshop",
     "nfi_no": "manual_nfi",         # cột "Số NFI"
     "insp_date": "manual_insp_date",  # cột "Ngày kiểm tra"
+    "note": "manual_note",          # cột "Ghi chú"
 }
 
 

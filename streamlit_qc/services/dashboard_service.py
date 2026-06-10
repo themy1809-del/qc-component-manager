@@ -146,6 +146,66 @@ def compute_dashboard(
 
 
 # ====================================================================
+# KHỐI LƯỢNG (TẤN) + PHỄU CÁC KHÂU — kiểm soát không bỏ sót
+# ====================================================================
+def get_weight_stats(db: DB, pid: int) -> dict:
+    """Khối lượng (kg) tổng / đã Fit-up / đã Final + đếm bỏ sót khâu.
+
+    Tính hoàn toàn trong SQL — không kéo data_json về.
+    """
+    w = db._json_field_expr("weight_kg")
+    if db.is_postgres:
+        wexpr = (f"CASE WHEN {w} ~ '^[0-9]+\.?[0-9]*$' "
+                 f"THEN ({w})::numeric ELSE 0 END")
+    else:
+        wexpr = f"CAST({w} AS REAL)"
+
+    total = db.conn.execute(
+        f"SELECT COALESCE(SUM({wexpr}),0) s, COUNT(*) n "
+        f"FROM components WHERE project_id=?", (pid,)
+    ).fetchone()
+
+    stage: dict[str, tuple] = {}
+    for itype, key in (("FUR", "fitup"), ("DGRP", "final")):
+        r = db.conn.execute(
+            f"""SELECT COALESCE(SUM({wexpr}),0) s, COUNT(*) n
+                FROM components c
+                WHERE c.project_id=? AND EXISTS (
+                    SELECT 1 FROM inspections i
+                    WHERE i.component_id=c.id
+                          AND i.inspection_type=? AND i.result='PASS')""",
+            (pid, itype),
+        ).fetchone()
+        stage[key] = (float(r["s"] or 0), int(r["n"] or 0))
+
+    final_no_fitup = db.conn.execute(
+        """SELECT COUNT(*) n FROM components c
+           WHERE c.project_id=?
+             AND EXISTS (SELECT 1 FROM inspections i WHERE i.component_id=c.id
+                         AND i.inspection_type='DGRP' AND i.result='PASS')
+             AND NOT EXISTS (SELECT 1 FROM inspections i WHERE i.component_id=c.id
+                         AND i.inspection_type='FUR' AND i.result='PASS')""",
+        (pid,),
+    ).fetchone()["n"]
+
+    never_inspected = db.conn.execute(
+        """SELECT COUNT(*) n FROM components c
+           WHERE c.project_id=?
+             AND NOT EXISTS (SELECT 1 FROM inspections i
+                             WHERE i.component_id=c.id)""",
+        (pid,),
+    ).fetchone()["n"]
+
+    return {
+        "total_kg": float(total["s"] or 0), "total_n": int(total["n"] or 0),
+        "fitup_kg": stage["fitup"][0], "fitup_n": stage["fitup"][1],
+        "final_kg": stage["final"][0], "final_n": stage["final"][1],
+        "final_no_fitup": int(final_no_fitup or 0),
+        "never_inspected": int(never_inspected or 0),
+    }
+
+
+# ====================================================================
 # TREND ANALYSIS — số inspection mỗi ngày
 # ====================================================================
 def get_inspection_trend(

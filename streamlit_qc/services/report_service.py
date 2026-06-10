@@ -111,7 +111,7 @@ def compute_report(
 
     # ---- Inspection query với date filter ----
     sql = (
-        "SELECT i.*, c.code comp_code, c.data_json comp_data "
+        f"SELECT i.*, c.code comp_code, {db.slim_json_expr('c.data_json')} comp_data "
         "FROM inspections i JOIN components c ON c.id=i.component_id "
         "WHERE i.project_id=?"
     )
@@ -213,13 +213,13 @@ def compute_report(
 
     # Workshop progress: cần tổng cấu kiện mỗi xưởng + số đã inspect
     ws_total: dict[str, int] = {}
+    _ws = db._json_field_expr("workshop")
     for r in db.conn.execute(
-        "SELECT data_json FROM components WHERE project_id=?", (pid,)
+        f"SELECT COALESCE(NULLIF({_ws}, ''), '(không xưởng)') AS ws, COUNT(*) c "
+        f"FROM components WHERE project_id=? GROUP BY 1", (pid,)
     ):
         try:
-            d = json.loads(r["data_json"])
-            ws = str(d.get("workshop") or "(không xưởng)")
-            ws_total[ws] = ws_total.get(ws, 0) + 1
+            ws_total[str(r["ws"])] = ws_total.get(str(r["ws"]), 0) + r["c"]
         except json.JSONDecodeError:
             pass
 
@@ -338,7 +338,8 @@ def export_to_excel_pro(
     # ==========================================================
     ws_c = wb.create_sheet("🔧 Cấu kiện")
     comp_rows = db.conn.execute(
-        "SELECT id, code, status, data_json FROM components WHERE project_id=? ORDER BY code",
+        f"SELECT id, code, status, {db.slim_json_expr()} AS data_json "
+        f"FROM components WHERE project_id=? ORDER BY code",
         (pid,),
     ).fetchall()
     comp_records = []
@@ -410,7 +411,7 @@ def export_to_excel_pro(
     # ==========================================================
     ws_f = wb.create_sheet("❌ FAIL")
     fail_rows = db.conn.execute(
-        """SELECT c.code, c.status, c.data_json,
+        f"""SELECT c.code, c.status, {db.slim_json_expr('c.data_json')} AS data_json,
                   i.inspection_type, i.inspection_date, i.inspector, i.report_no, i.note
            FROM inspections i
            JOIN components c ON c.id = i.component_id

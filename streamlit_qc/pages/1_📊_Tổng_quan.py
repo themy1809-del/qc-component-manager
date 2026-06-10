@@ -251,92 +251,73 @@ st.markdown(
 st.write("")
 
 # ============================================================
-# 🔮 FORECAST & S-CURVE (P2.8) — velocity + ETA + cumulative chart
+# ⚖️ KHỐI LƯỢNG (TẤN) + PHỄU CÁC KHÂU — kiểm soát không bỏ sót
 # ============================================================
+st.markdown('<div class="section-title">⚖️ Khối lượng &amp; phễu các khâu</div>',
+            unsafe_allow_html=True)
+
+@st.cache_data(ttl=120, show_spinner=False, max_entries=32)
+def _weight_cached(_db, pid_in: int) -> dict:
+    return dashboard_service.get_weight_stats(_db, pid_in)
+
 try:
-    from streamlit_qc.services import forecast_service as _fc
+    _w = _weight_cached(db, pid)
+    _t_ton = _w["total_kg"] / 1000.0
+    _f_ton = _w["fitup_kg"] / 1000.0
+    _d_ton = _w["final_kg"] / 1000.0
+    _pf = (100.0 * _f_ton / _t_ton) if _t_ton else 0.0
+    _pd = (100.0 * _d_ton / _t_ton) if _t_ton else 0.0
 
-    @st.cache_data(ttl=120, show_spinner=False, max_entries=16)
-    def _forecast_cached(_db, pid_in: int):
-        return _fc.get_forecast(_db, pid_in)
-
-    @st.cache_data(ttl=120, show_spinner=False, max_entries=16)
-    def _scurve_cached(_db, pid_in: int, days: int):
-        return _fc.get_scurve(_db, pid_in, days)
-
-    forecast = _forecast_cached(db, pid)
-
-    st.markdown(
-        '<div class="section-title">🔮 Dự báo tiến độ & S-Curve</div>',
-        unsafe_allow_html=True,
-    )
-
-    fc1, fc2, fc3, fc4 = st.columns(4)
-    fc1.metric(
-        "⚡ Velocity (tuần)",
-        f"{forecast.velocity_per_week:.1f} CK",
-        help="Trung bình số CK ACCEPTED/tuần trong 4 tuần qua",
-    )
-    eta_label = f"{forecast.eta_days} ngày" if forecast.eta_days is not None else "—"
-    eta_delta = forecast.eta_date if forecast.eta_date else None
-    fc2.metric(
-        "🎯 ETA hoàn thành",
-        eta_label,
-        delta=eta_delta,
+    wcol1, wcol2, wcol3, wcol4 = st.columns(4)
+    wcol1.metric(
+        "📦 Tổng khối lượng",
+        f"{_t_ton:,.1f} tấn",
+        f"{_w['total_n']:,} cấu kiện",
         delta_color="off",
-        help=(
-            "Số ngày dự kiến hoàn thành toàn bộ project theo velocity hiện tại."
-            "Để 0 nghĩa là đã hoàn thành 100%."
-        ),
+        help="Tổng Weight [kg] của toàn bộ cấu kiện trong master (quy ra tấn).",
     )
-    lead = forecast.avg_lead_time_days
-    fc3.metric(
-        "⏱️ Lead time TB",
-        f"{lead:.1f} ngày" if lead is not None else "—",
-        help="Trung bình ngày từ Fit-up PASS → Final PASS (cấu kiện ACCEPTED)",
+    wcol2.metric(
+        "🔧 Đã Fit-up",
+        f"{_f_ton:,.1f} tấn",
+        f"{_pf:.1f}% khối lượng · {_w['fitup_n']:,} CK",
+        delta_color="off",
+        help="Khối lượng các cấu kiện đã có Fit-up PASS.",
     )
-    fc4.metric(
-        "📦 Còn lại",
-        f"{forecast.total_components - forecast.done_components:,} CK",
-        help="Số cấu kiện chưa ACCEPTED",
+    wcol3.metric(
+        "✅ Đã nghiệm thu (Final)",
+        f"{_d_ton:,.1f} tấn",
+        f"{_pd:.1f}% khối lượng · {_w['final_n']:,} CK",
+        delta_color="off",
+        help="Khối lượng các cấu kiện đã có Final/DGRP PASS.",
+    )
+    wcol4.metric(
+        "🕳 Chưa kiểm khâu nào",
+        f"{_w['never_inspected']:,} CK",
+        "cần đưa vào kế hoạch",
+        delta_color="off",
+        help="Cấu kiện chưa có bất kỳ inspection nào — dễ bỏ sót nhất.",
     )
 
-    # S-curve chart
-    sdata = _scurve_cached(db, pid, 90)
-    if sdata:
-        import plotly.graph_objects as _pgo
-        dates = [d["date"] for d in sdata]
-        pcts = [d["cum_pct"] for d in sdata]
-        nbrs = [d["cumulative"] for d in sdata]
+    # Phễu các khâu — nhìn 1 phát biết tồn ở đâu
+    _tot_n = max(_w["total_n"], 1)
+    st.progress(min(_w["fitup_n"] / _tot_n, 1.0),
+                text=f"Khâu Fit-up: {_w['fitup_n']:,}/{_w['total_n']:,} cấu kiện")
+    st.progress(min(_w["final_n"] / _tot_n, 1.0),
+                text=f"Khâu Final (nghiệm thu): {_w['final_n']:,}/{_w['total_n']:,} cấu kiện")
 
-        fig_s = _pgo.Figure()
-        fig_s.add_trace(_pgo.Scatter(
-            x=dates, y=pcts, mode="lines+markers", name="Actual %",
-            line=dict(color="#0F1E40", width=3),
-            marker=dict(size=6, color="#D4A744"),
-            fill="tozeroy", fillcolor="rgba(15,30,64,0.08)",
-            customdata=nbrs,
-            hovertemplate="<b>%{x}</b><br>%{y:.1f}%<br>%{customdata} CK<extra></extra>",
-        ))
-        # Today marker
-        import datetime as _dtdt
-        fig_s.add_vline(
-            x=_dtdt.date.today().isoformat(),
-            line_dash="dash", line_color="#94A3B8",
-            annotation_text="Hôm nay", annotation_position="top",
+    if _w["final_no_fitup"] and _w["fitup_n"] > 0:
+        st.warning(
+            f"⚠️ **{_w['final_no_fitup']:,} cấu kiện CÓ Final nhưng THIẾU Fit-up** — "
+            "dấu hiệu bỏ sót khâu hoặc thiếu hồ sơ Fit-up. "
+            "Vào tab Cấu kiện → lọc «Có Final, thiếu Fit-up» để xem danh sách."
         )
-        fig_s.update_layout(
-            title="S-Curve: % ACCEPTED tích luỹ theo ngày (90 ngày qua)",
-            xaxis_title="Ngày", yaxis_title="% Hoàn thành",
-            height=320, margin=dict(l=10, r=10, t=40, b=10),
-            yaxis=dict(range=[0, 100]),
-            showlegend=False,
+    elif _w["fitup_n"] == 0 and _w["final_n"] > 0:
+        st.caption(
+            "ℹ️ Dự án này theo dõi nghiệm thu 1 bước (không có khâu Fit-up riêng) "
+            "— thanh Fit-up = 0 là bình thường."
         )
-        st.plotly_chart(fig_s, use_container_width=True)
-    else:
-        st.caption("Chưa đủ dữ liệu inspection để vẽ S-curve.")
-except Exception as _fc_err:
-    st.caption(f"⚠️ Forecast service: {_fc_err}")
+except Exception as _w_err:
+    st.caption(f"⚠️ Khối lượng: {_w_err}")
 
 st.write("")
 
@@ -519,6 +500,96 @@ if data.workshop_stats:
             "Đã NT": st.column_config.NumberColumn(format="%d"),
         },
     )
+
+st.write("")
+
+# ============================================================
+# 🔮 FORECAST & S-CURVE (P2.8) — velocity + ETA + cumulative chart
+# ============================================================
+try:
+    from streamlit_qc.services import forecast_service as _fc
+
+    @st.cache_data(ttl=120, show_spinner=False, max_entries=16)
+    def _forecast_cached(_db, pid_in: int):
+        return _fc.get_forecast(_db, pid_in)
+
+    @st.cache_data(ttl=120, show_spinner=False, max_entries=16)
+    def _scurve_cached(_db, pid_in: int, days: int):
+        return _fc.get_scurve(_db, pid_in, days)
+
+    forecast = _forecast_cached(db, pid)
+
+    st.markdown(
+        '<div class="section-title">🔮 Dự báo tiến độ & S-Curve</div>',
+        unsafe_allow_html=True,
+    )
+
+    fc1, fc2, fc3, fc4 = st.columns(4)
+    fc1.metric(
+        "⚡ Velocity (tuần)",
+        f"{forecast.velocity_per_week:.1f} CK",
+        help="Trung bình số CK ACCEPTED/tuần trong 4 tuần qua",
+    )
+    eta_label = f"{forecast.eta_days} ngày" if forecast.eta_days is not None else "—"
+    eta_delta = forecast.eta_date if forecast.eta_date else None
+    fc2.metric(
+        "🎯 ETA hoàn thành",
+        eta_label,
+        delta=eta_delta,
+        delta_color="off",
+        help=(
+            "Số ngày dự kiến hoàn thành toàn bộ project theo velocity hiện tại."
+            "Để 0 nghĩa là đã hoàn thành 100%."
+        ),
+    )
+    lead = forecast.avg_lead_time_days
+    fc3.metric(
+        "⏱️ Lead time TB",
+        f"{lead:.1f} ngày" if lead is not None else "—",
+        help="Trung bình ngày từ Fit-up PASS → Final PASS (cấu kiện ACCEPTED)",
+    )
+    fc4.metric(
+        "📦 Còn lại",
+        f"{forecast.total_components - forecast.done_components:,} CK",
+        help="Số cấu kiện chưa ACCEPTED",
+    )
+
+    # S-curve chart
+    sdata = _scurve_cached(db, pid, 90)
+    if sdata:
+        import plotly.graph_objects as _pgo
+        dates = [d["date"] for d in sdata]
+        pcts = [d["cum_pct"] for d in sdata]
+        nbrs = [d["cumulative"] for d in sdata]
+
+        fig_s = _pgo.Figure()
+        fig_s.add_trace(_pgo.Scatter(
+            x=dates, y=pcts, mode="lines+markers", name="Actual %",
+            line=dict(color="#0F1E40", width=3),
+            marker=dict(size=6, color="#D4A744"),
+            fill="tozeroy", fillcolor="rgba(15,30,64,0.08)",
+            customdata=nbrs,
+            hovertemplate="<b>%{x}</b><br>%{y:.1f}%<br>%{customdata} CK<extra></extra>",
+        ))
+        # Today marker
+        import datetime as _dtdt
+        fig_s.add_vline(
+            x=_dtdt.date.today().isoformat(),
+            line_dash="dash", line_color="#94A3B8",
+            annotation_text="Hôm nay", annotation_position="top",
+        )
+        fig_s.update_layout(
+            title="S-Curve: % ACCEPTED tích luỹ theo ngày (90 ngày qua)",
+            xaxis_title="Ngày", yaxis_title="% Hoàn thành",
+            height=320, margin=dict(l=10, r=10, t=40, b=10),
+            yaxis=dict(range=[0, 100]),
+            showlegend=False,
+        )
+        st.plotly_chart(fig_s, use_container_width=True)
+    else:
+        st.caption("Chưa đủ dữ liệu inspection để vẽ S-curve.")
+except Exception as _fc_err:
+    st.caption(f"⚠️ Forecast service: {_fc_err}")
 
 st.write("")
 
