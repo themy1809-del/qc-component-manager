@@ -1005,15 +1005,41 @@ class DB:
             (pid, code),
         ).fetchone()
 
+    # Cac truong data_json can cho BANG cau kien — rut gon payload tu DB
+    # (data_json day du chua ca _extra rat lon; chi load khi xem chi tiet)
+    LIST_JSON_FIELDS = (
+        "zone", "phase", "workshop", "type", "rev_no", "guid",
+        "manual_nfi", "manual_insp_date", "manual_drawing",
+        "drawing", "member_no", "section",
+    )
+
+    def _json_field_expr(self, f: str, col: str = "data_json") -> str:
+        if self.is_postgres:
+            return f"{col}::jsonb->>'{f}'"
+        return f"json_extract({col}, '$.{f}')"
+
     def list_components(
         self,
         pid: int,
         status: str | None = None,
         search: str = "",
         limit: int = 50000,
+        json_filters: dict | None = None,
     ):
-        """Liệt kê cấu kiện theo bộ lọc trạng thái + tìm theo mã."""
-        q = "SELECT * FROM components WHERE project_id=?"
+        """Liệt kê cấu kiện theo bộ lọc trạng thái + tìm theo mã.
+
+        data_json trả về đã RÚT GỌN còn LIST_JSON_FIELDS (giảm ~50x dữ liệu
+        tải từ DB → nhanh + đỡ tốn RAM). json_filters lọc thẳng trong SQL.
+        """
+        pairs = ", ".join(
+            f"'{f}', {self._json_field_expr(f)}" for f in self.LIST_JSON_FIELDS
+        )
+        if self.is_postgres:
+            dj = f"jsonb_build_object({pairs})::text"
+        else:
+            dj = f"json_object({pairs})"
+        q = (f"SELECT id, code, status, {dj} AS data_json "
+             f"FROM components WHERE project_id=?")
         args: list = [pid]
         if status and status != "ALL":
             q += " AND status=?"
@@ -1021,6 +1047,10 @@ class DB:
         if search:
             q += " AND code LIKE ?"
             args.append(f"%{search}%")
+        for f, val in (json_filters or {}).items():
+            if f in self.LIST_JSON_FIELDS and val:
+                q += f" AND {self._json_field_expr(f)} = ?"
+                args.append(str(val))
         q += f" ORDER BY code LIMIT {int(limit)}"
         return self.conn.execute(q, args).fetchall()
 

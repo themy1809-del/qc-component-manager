@@ -31,6 +31,14 @@ except ImportError:
 SQLITE_PATH = Path(__file__).parent / "streamlit_qc" / "data" / "qc_components.db"
 PG_DSN = os.getenv("DATABASE_URL")
 
+# Fallback: doc tu file supabase_url.txt canh script (tranh loi escape ky tu trong .bat)
+if not PG_DSN:
+    _url_file = Path(__file__).parent / "supabase_url.txt"
+    if _url_file.exists():
+        _txt = _url_file.read_text(encoding="utf-8").strip()
+        if _txt and not _txt.startswith("postgresql://postgres.xxx"):
+            PG_DSN = _txt
+
 if not PG_DSN:
     print("LOI: chua set DATABASE_URL")
     print("Cach 1 - set env var truoc khi chay:")
@@ -174,6 +182,13 @@ for c in components:
         continue
     batch.append((new_pid, c["code"], c["data_json"], c.get("status") or "PENDING"))
 
+# Precompute (pg_project_id, code) -> sqlite component id  [O(n) thay cho O(n^2)]
+_comp_key_to_sid = {}
+for _c in components:
+    _np = id_map_proj.get(_c["project_id"])
+    if _np:
+        _comp_key_to_sid[(_np, _c["code"])] = _c["id"]
+
 # Batch insert
 inserted = 0
 for i in range(0, len(batch), 500):
@@ -187,11 +202,9 @@ for i in range(0, len(batch), 500):
         RETURNING id, project_id, code
     """)
     for row in pgc.fetchall():
-        # Tim id sqlite cua component nay
-        for c in components:
-            if id_map_proj.get(c["project_id"]) == row[1] and c["code"] == row[2]:
-                id_map_comp[c["id"]] = row[0]
-                break
+        _sid = _comp_key_to_sid.get((row[1], row[2]))
+        if _sid is not None:
+            id_map_comp[_sid] = row[0]
     inserted += len(chunk)
     print(f"    {inserted}/{len(batch)}")
 pg.commit()

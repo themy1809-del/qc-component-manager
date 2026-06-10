@@ -1,0 +1,49 @@
+name: Auto import master (hang dem)
+
+on:
+  schedule:
+    - cron: "0 18 * * *"   # 18:00 UTC = 01:00 sang gio Viet Nam
+  workflow_dispatch:
+    inputs:
+      projects:
+        description: "Ma du an, cach nhau dau cach (de trong = tat ca)"
+        required: false
+        default: ""
+      force:
+        description: "Ep import lai ca file khong doi"
+        type: boolean
+        default: false
+
+concurrency:
+  group: auto-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Khoi phuc state (de bo qua du an khong doi)
+        uses: actions/cache@v4
+        with:
+          path: .auto_import_state.json
+          key: auto-import-state-${{ github.run_id }}
+          restore-keys: |
+            auto-import-state-
+
+      - name: Cai thu vien
+        run: pip install --quiet pandas openpyxl pyxlsb xlrd psycopg2-binary
+
+      - name: Chay import
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          ARGS="${{ inputs.projects }}"
+          if [ "${{ inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
+          python -u auto_import_master.py $ARGS

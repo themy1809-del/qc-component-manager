@@ -65,7 +65,8 @@ def excel_date_to_iso(v) -> str | None:
             return str(v)
     if isinstance(v, (dt.datetime, dt.date)):
         return v.strftime("%Y-%m-%d")
-    return str(v)
+    # Text dang DD/MM/YYYY... -> chuan hoa ISO (giu nguyen neu khong parse duoc)
+    return parse_date_input(str(v)) or str(v)
 
 
 def format_date_vn(iso_or_text: str | None) -> str:

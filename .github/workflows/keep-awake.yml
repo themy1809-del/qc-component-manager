@@ -1,0 +1,23 @@
+name: Keep app awake
+
+on:
+  schedule:
+    # Moi 4 tieng — du de app khong bao gio roi vao trang thai ngu
+    - cron: "0 */4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping app
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
+              "https://qc-daidung.streamlit.app/" || echo 000)
+            echo "Lan $i: HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          echo "App khong phan hoi 200 — co the dang thuc day, khong coi la loi."

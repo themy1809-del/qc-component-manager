@@ -184,18 +184,24 @@ with flt2_col1:
     )
 
 # Tính set ID overdue nếu filter bật (cache 60s)
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False, max_entries=10)
 def _get_overdue_cached(_db, pid_in: int, threshold: int = 7) -> list[dict]:
     return component_service.get_overdue_components(_db, pid_in, threshold)
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False, max_entries=6)
 def _list_components_cached(_db, pid_in: int, status_in: str, search_in: str, filters_key: tuple):
-    """Cache 60s — tránh load lại 18k dòng mỗi lần bấm bất kỳ widget nào."""
+    """Cache 60s, max 6 bản — tránh load lại + tránh phình RAM gói free."""
     return component_service.list_components(
         _db, pid_in, status=status_in, search=search_in,
         dropdown_filters=dict(filters_key) if filters_key else None,
     )
+
+@st.cache_data(ttl=300, show_spinner=False, max_entries=20)
+def _filter_options_cached(_db, pid_in: int) -> dict[str, list[str]]:
+    """Dropdown options bằng SQL DISTINCT — không tải cả bảng như trước."""
+    return component_service.get_filter_options(_db, pid_in)
+
 
 overdue_ids: set[int] = set()
 if only_overdue:
@@ -207,8 +213,7 @@ if only_overdue:
 
 dropdown_filters = {}
 if show_filters:
-    pre_query = _list_components_cached(db, pid, status, search, ())
-    uv = pre_query.unique_values
+    uv = _filter_options_cached(db, pid)
     cols = st.columns(len(COMPONENT_FILTER_FIELDS))
     for col, (field, label) in zip(cols, COMPONENT_FILTER_FIELDS):
         with col:

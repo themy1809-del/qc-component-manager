@@ -276,6 +276,9 @@ def import_master(
         to_add = []       # records cho bulk_add_inspections
         to_update = []    # (ins_id, new_date, new_rfi)
 
+        # Gia tri "rac" KHONG duoc tinh la da nghiem thu
+        _INVALID_RFI = {"nan", "nat", "n/a", "na", "-", "0", "00:00:00", "none"}
+
         for (code, is_new, rfi_fitup_val, date_fitup_val,
              rfi_final_val, date_final_val) in insp_tasks:
             cid = id_map.get(code)
@@ -284,7 +287,7 @@ def import_master(
 
             if has_fitup_col:
                 rfi_str = str(rfi_fitup_val or "").strip()
-                if rfi_str and rfi_str.lower() != "nan":
+                if rfi_str and rfi_str.lower() not in _INVALID_RFI:
                     new_date = date_fitup_val or ""
                     em = master_by_comp.get((cid, "FUR"))
                     if em:
@@ -305,7 +308,7 @@ def import_master(
 
             if has_final_col:
                 rfi_str = str(rfi_final_val or "").strip()
-                if rfi_str and rfi_str.lower() != "nan":
+                if rfi_str and rfi_str.lower() not in _INVALID_RFI:
                     new_date = date_final_val or ""
                     em = master_by_comp.get((cid, "DGRP"))
                     if em:

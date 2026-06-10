@@ -1,0 +1,325 @@
+{
+ "_huong_dan": [
+  "Tu dong tai file moi nhat tu Google Drive roi import. Bam IMPORT_ALL.bat.",
+  "Du an gsheet = ID on dinh, luon lay ban moi nhat. Du an 'file' neu doi se can cap nhat drive_id.",
+  "Doi 'bat': false de tam bo qua 1 du an."
+ ],
+ "du_an": [
+  {
+   "code": "10625-031",
+   "ten": "Cau di bo Song Sai Gon - Cau chinh",
+   "drive_id": "1-9Gc1InlTSWbudg_qEqiHcREve6-ntesbtvlUs5DBGo",
+   "drive_kind": "gsheet",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10625-031*",
+   "template": "auto",
+   "sheet": "Checklist ",
+   "header_row": 2,
+   "cot": {
+    "code": "Member Punch No",
+    "rfi_final_done": "RFI No"
+   },
+   "bat": true
+  },
+  {
+   "code": "10626-030",
+   "ten": "Kho lanh & kho kho Igarashi",
+   "drive_id": "1djqqd5WCEr2fInih5lw4ijA-_dLyGr6TDtX5RFY5KVE",
+   "drive_kind": "gsheet",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*Igarashi*",
+   "template": "auto",
+   "sheet": "Checklist",
+   "header_row": 1,
+   "cot": {
+    "code": "Member Punch No",
+    "rfi_final_done": "RFI Gia công"
+   },
+   "bat": true
+  },
+  {
+   "code": "10626-068",
+   "ten": "APEC S3 Bao che (he mai nhom)",
+   "drive_id": "1aHKBJlHk8IkBP7Dx3artRovbbqsZfIQTCN6BR-Xqrz8",
+   "drive_kind": "gsheet",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10626-068*",
+   "template": "auto",
+   "sheet": "CHECKLIST",
+   "header_row": 1,
+   "cot": {
+    "code": "Member Punch No",
+    "rfi_final_done": "DATE NGHIỆM THU",
+    "date_final_done": "DATE NGHIỆM THU"
+   },
+   "bat": true
+  },
+  {
+   "code": "10825-048",
+   "ten": "Kho cang dau moi xang dau Hau Giang",
+   "drive_id": "1rLjVjOFat_oBu0BZswc1_jFbNPH7FmWn5sqTcbSgH_c",
+   "drive_kind": "gsheet",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10825-048*",
+   "template": "auto",
+   "sheet": "",
+   "header_row": 0,
+   "cot": {
+    "code": "Name (Member +index)",
+    "rfi_fitup_done": "Ngày fitup",
+    "date_fitup_done": "Ngày fitup",
+    "rfi_final_done": "Ngày final Dimension",
+    "date_final_done": "Ngày final Dimension"
+   },
+   "bat": true
+  },
+  {
+   "code": "10725-003-U1",
+   "ten": "BISON Structure Steel - Unit 1",
+   "drive_id": "1N4sB25tcKkls2LzsgPnXFfzKQID97rSEAvMpvDHFbK8",
+   "drive_kind": "gsheet",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10725-003*",
+   "template": "bison",
+   "sheet": "CHECK_LIST",
+   "header_row": 2,
+   "cot": {},
+   "bat": true
+  },
+  {
+   "code": "10725-003-U2",
+   "ten": "BISON Structure Steel - Unit 2",
+   "drive_id": "1nbFpUzRAzj65TtRFupFSkPP_gm513rvA",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10725-003*",
+   "template": "bison",
+   "sheet": "CHECK_LIST",
+   "header_row": 2,
+   "cot": {
+    "code": "Member Punch No"
+   },
+   "bat": true
+  },
+  {
+   "code": "10625-036",
+   "ten": "APEC S3",
+   "drive_id": "1hepLP3TceoEQqpZmnQH-My0l1lFfLFfX",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10625-036*",
+   "template": "auto",
+   "sheet": "CHECKLIST",
+   "header_row": 2,
+   "cot": {
+    "code": "Tên dùng làm hồ sơ",
+    "rfi_final_done": "DANH SÁCH NGHIỆM THU GIA CÔNG",
+    "date_final_done": "DATE NGHIỆM THU"
+   },
+   "bat": true
+  },
+  {
+   "code": "10725-009",
+   "ten": "VIOLA - Structural Steel",
+   "drive_id": "1wbUYBIdDNVNJxGGZu0bkL3OUwI0s2mko",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10725-009*",
+   "template": "viola",
+   "sheet": "PKL",
+   "header_row": 4,
+   "cot": {},
+   "bat": true
+  },
+  {
+   "code": "10626-008",
+   "ten": "San van dong PVF Hung Yen",
+   "drive_id": "17SL_SRowMZvCKSYO1BHZR5Iaq7eGqM0W",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10626-008*",
+   "template": "auto",
+   "sheet": "PKL",
+   "header_row": 4,
+   "cot": {
+    "code": "Tên cấu kiện",
+    "rfi_final_done": "Ngày HHT",
+    "date_final_done": "Ngày HHT"
+   },
+   "bat": true
+  },
+  {
+   "code": "11625-063",
+   "ten": "Cau vuot My Thuy - Thang Long",
+   "drive_id": "1-TOy8AB7-_z5ytI9CLYB3q9CMdbSpChR",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*11625-063*",
+   "template": "auto",
+   "sheet": "Sheet",
+   "header_row": 0,
+   "cot": {
+    "code": "Member Punch No",
+    "rfi_fitup_done": "Ngày fitup",
+    "date_fitup_done": "Ngày fitup",
+    "rfi_final_done": "Ngày  final Dimension",
+    "date_final_done": "Ngày  final Dimension"
+   },
+   "bat": true
+  },
+  {
+   "code": "10625-045",
+   "ten": "Cau vuot My Thuy - Nam Anh",
+   "drive_id": "117i2bROoj7HizvsrPhkWvlFRCZeoUS6w",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10625-045*",
+   "template": "auto",
+   "sheet": "Sheet",
+   "header_row": 0,
+   "cot": {
+    "code": "TÊN HỒ SƠ",
+    "rfi_fitup_done": "Ngày fitup",
+    "date_fitup_done": "Ngày fitup",
+    "rfi_final_done": "Ngày  final Dimension",
+    "date_final_done": "Ngày  final Dimension"
+   },
+   "bat": true
+  },
+  {
+   "code": "10725-007",
+   "ten": "BISON SDM ATO and TED",
+   "drive_id": "1bdPjjDLh7vzpKzefdjs1ser0nmqgnyn_",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10725-007*",
+   "template": "bison",
+   "sheet": "CHECK_LIST",
+   "header_row": 2,
+   "cot": {
+    "code": "Member Punch No"
+   },
+   "bat": true
+  },
+  {
+   "code": "11625-067",
+   "ten": "Goi 2 Nut GT My Thuy Thu Duc",
+   "drive_id": "1mRxcX7JjC-Tfhc2JYSyz8Y7QoIVOxKuy",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*11625-067*",
+   "template": "auto",
+   "sheet": "Sheet",
+   "header_row": 0,
+   "cot": {
+    "code": "Member Punch No",
+    "rfi_fitup_done": "Ngày fitup",
+    "date_fitup_done": "Ngày fitup",
+    "rfi_final_done": "Ngày  final Dimension",
+    "date_final_done": "Ngày  final Dimension"
+   },
+   "bat": true
+  },
+  {
+   "code": "10725-008",
+   "ten": "EVAPCO-Gregory Structural Steel",
+   "drive_id": "1ek_7rtVQguzPtUSpagosKmWfTWHl6JDi",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10725-008*",
+   "template": "auto",
+   "sheet": "Checklist ",
+   "header_row": 2,
+   "cot": {
+    "code": "Member Punch No",
+    "rfi_final_done": "RFI Fab No."
+   },
+   "bat": true
+  },
+  {
+   "code": "TCTN.DNS.26.004",
+   "ten": "Duong cao toc VIN",
+   "drive_id": "1JR-PSlJRTYGvFyPLMSId3g_gejoqXPgd",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*TCTN.DNS.26.004*",
+   "template": "auto",
+   "sheet": "PKL",
+   "header_row": 6,
+   "cot": {
+    "code": "Member No 2",
+    "rfi_final_done": "Date Dim",
+    "date_final_done": "Date Dim"
+   },
+   "bat": true
+  },
+  {
+   "code": "10725-011",
+   "ten": "VIOLA - Ducting SDM & TED",
+   "drive_id": "1EIgm2ROTecaE_k6e3t3VBtODVdJLqlt2",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10725-011*",
+   "template": "auto",
+   "sheet": "PKL",
+   "header_row": 3,
+   "cot": {
+    "code": "Member Punch No",
+    "rfi_final_done": "Report No. FIR-VIR"
+   },
+   "bat": true
+  },
+  {
+   "code": "10725-001",
+   "ten": "Structure Steel - GT1",
+   "drive_id": "18WtFwx9cODxuyOIEoMDxByoVQnSOwXuQ",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10725-001*",
+   "template": "auto",
+   "sheet": "PKL",
+   "header_row": 3,
+   "cot": {
+    "code": "Member Punch No",
+    "rfi_final_done": "RFI 200POR9241070-WI1A1-RFI-A001",
+    "date_final_done": "Date"
+   },
+   "bat": true
+  },
+  {
+   "code": "10626-073",
+   "ten": "San bay Phu Quoc - San thep",
+   "drive_id": "18A8NqjpwjkFXgagZkmo1jNInp58e4IhE",
+   "drive_kind": "file",
+   "drive_name": "xlsx",
+   "thu_muc": "master_files",
+   "mau_ten_file": "*10626-073*",
+   "template": "auto",
+   "sheet": "PKL",
+   "header_row": 3,
+   "cot": {
+    "code": "Member No 2",
+    "rfi_final_done": "RFI No Dim + Visual",
+    "rfi_fitup_done": "RFI_Fit-up"
+   },
+   "bat": true
+  }
+ ]
+}

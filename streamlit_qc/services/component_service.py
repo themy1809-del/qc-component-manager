@@ -294,8 +294,51 @@ def get_overdue_components(
 
 
 def count_overdue(db: DB, pid: int, threshold_days: int = 7) -> int:
-    """Đếm nhanh số cấu kiện overdue (cho badge KPI)."""
-    return len(get_overdue_components(db, pid, threshold_days))
+    """Đếm nhanh số cấu kiện overdue (cho badge KPI) — COUNT trong SQL,
+    không kéo data_json về (nhanh hơn nhiều trên Postgres từ xa)."""
+    import datetime as dt
+    cutoff = (dt.date.today() - dt.timedelta(days=threshold_days)).isoformat()
+    row = db.conn.execute(
+        """
+        SELECT COUNT(*) c
+        FROM components c
+        INNER JOIN (
+            SELECT i.component_id, MAX(i.inspection_date) last_fitup_date
+            FROM inspections i
+            WHERE i.project_id = ? AND i.inspection_type = 'FUR'
+                  AND i.result = 'PASS' AND i.inspection_date != ''
+            GROUP BY i.component_id
+        ) fitup ON fitup.component_id = c.id
+        LEFT JOIN (
+            SELECT DISTINCT i.component_id
+            FROM inspections i
+            WHERE i.project_id = ? AND i.inspection_type = 'DGRP'
+                  AND i.result = 'PASS'
+        ) final ON final.component_id = c.id
+        WHERE c.project_id = ?
+              AND final.component_id IS NULL
+              AND fitup.last_fitup_date <= ?
+        """,
+        (pid, pid, pid, cutoff),
+    ).fetchone()
+    return int(row["c"] or 0)
+
+
+def get_filter_options(db: DB, pid: int) -> dict[str, list[str]]:
+    """Unique values cho 4 dropdown filter — SQL DISTINCT, không kéo rows về.
+
+    Thay cho cách cũ (tải toàn bộ cấu kiện chỉ để gom unique values).
+    """
+    out: dict[str, list[str]] = {}
+    for f, _label in COMPONENT_FILTER_FIELDS:
+        expr = db._json_field_expr(f)
+        rows = db.conn.execute(
+            f"SELECT DISTINCT {expr} AS v FROM components "
+            f"WHERE project_id=? AND {expr} IS NOT NULL AND {expr} != ''",
+            (pid,),
+        ).fetchall()
+        out[f] = sorted(str(r["v"]) for r in rows)
+    return out
 
 
 def list_components(
@@ -329,7 +372,8 @@ def list_components(
     ).fetchone()["c"]
 
     # Lấy raw rows + filter status/search ở SQL (nhanh)
-    raw_rows = db.list_components(pid, status=status, search=search, limit=limit)
+    raw_rows = db.list_components(pid, status=status, search=search, limit=limit,
+                                  json_filters=dropdown_filters)
     result.after_status_search = len(raw_rows)
 
     # Latest inspection per component

@@ -284,11 +284,11 @@ def compare_projects(db: DB, project_ids: list[int]) -> list[dict]:
     ins_7d_map = {r["project_id"]: r["c"] for r in ins_rows}
 
     # 4. Overdue per project (threshold 7 days)
-    from streamlit_qc.services.component_service import get_overdue_components
+    from streamlit_qc.services.component_service import count_overdue
     overdue_map = {}
     for pid in project_ids:
         try:
-            overdue_map[pid] = len(get_overdue_components(db, pid, 7))
+            overdue_map[pid] = count_overdue(db, pid, 7)
         except Exception:
             overdue_map[pid] = 0
 

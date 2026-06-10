@@ -59,3 +59,15 @@ SECRETS.txt
 
 # Uploaded files cache
 .uploads/
+
+# Supabase connection string (chua mat khau - KHONG commit)
+supabase_url.txt
+supabase_old.txt
+supabase_new.txt
+.auto_import_state.json
+master_files/
+_drive_cache/
+
+# Rac tam (mount/sandbox)
+.fuse_hidden*
+US

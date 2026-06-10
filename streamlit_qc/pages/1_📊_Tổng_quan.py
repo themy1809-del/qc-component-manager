@@ -256,11 +256,11 @@ st.write("")
 try:
     from streamlit_qc.services import forecast_service as _fc
 
-    @st.cache_data(ttl=120, show_spinner=False)
+    @st.cache_data(ttl=120, show_spinner=False, max_entries=16)
     def _forecast_cached(_db, pid_in: int):
         return _fc.get_forecast(_db, pid_in)
 
-    @st.cache_data(ttl=120, show_spinner=False)
+    @st.cache_data(ttl=120, show_spinner=False, max_entries=16)
     def _scurve_cached(_db, pid_in: int, days: int):
         return _fc.get_scurve(_db, pid_in, days)
 
@@ -567,7 +567,7 @@ with tcol2:
         key="trend_scope_radio",
     )
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False, max_entries=32)
 def _trend_cached(_db, pid_in: int | None, days: int) -> list[dict]:
     return dashboard_service.get_inspection_trend(_db, pid_in, days)
 
@@ -662,7 +662,7 @@ else:
 st.write("")
 st.markdown('<div class="section-title">👤 Hiệu suất Inspector</div>', unsafe_allow_html=True)
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False, max_entries=32)
 def _inspector_perf_cached(_db, pid_in: int | None, days: int) -> list[dict]:
     return dashboard_service.get_inspector_performance(_db, pid_in, days)
 

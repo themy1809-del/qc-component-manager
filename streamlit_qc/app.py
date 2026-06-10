@@ -184,7 +184,7 @@ if active_pid is None or proj is None:
     st.stop()
 
 
-@st.cache_data(ttl=120, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False, max_entries=64)
 def project_workshops(_db, pid: int) -> dict:
     """
     Aggregate workshop counts trong SQL — KHÔNG fetch 14k rows data_json.
@@ -237,7 +237,7 @@ def project_workshops(_db, pid: int) -> dict:
     }
 
 
-@st.cache_data(ttl=120, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False, max_entries=4)
 def all_projects_summary(_db) -> list[dict]:
     """Lấy KPI tóm tắt cho TẤT CẢ dự án — dùng cho multi-project overview."""
     rows = _db.conn.execute(
@@ -284,7 +284,7 @@ def all_projects_summary(_db) -> list[dict]:
     return out
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False, max_entries=64)
 def workshop_activity(_db, pid: int, workshop: str, limit: int = 10) -> list[dict]:
     """Filter workshop trong SQL — chỉ fetch số dòng cần thiết."""
     if _db.is_postgres:
@@ -512,7 +512,7 @@ if "overdue_threshold" not in st.session_state:
 threshold_days = st.session_state["overdue_threshold"]
 
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False, max_entries=12)
 def get_overdue(_db, pid: int, threshold: int) -> list[dict]:
     return component_service.get_overdue_components(_db, pid, threshold)
 
