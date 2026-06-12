@@ -2,22 +2,52 @@ name: Keep app awake
 
 on:
   schedule:
-    # Moi 4 tieng — du de app khong bao gio roi vao trang thai ngu
+    # Moi 4 tieng - du de app khong roi vao trang thai ngu (nguong ~12h)
     - cron: "0 */4 * * *"
   workflow_dispatch: {}
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
     steps:
-      - name: Ping app
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Cai trinh duyet headless
         run: |
-          for i in 1 2 3; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
-              "https://qc-daidung.streamlit.app/" || echo 000)
-            echo "Lan $i: HTTP $code"
-            if [ "$code" = "200" ]; then exit 0; fi
-            sleep 20
-          done
-          echo "App khong phan hoi 200 — co the dang thuc day, khong coi la loi."
+          pip install --quiet playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Mo app bang trinh duyet that (curl khong duoc tinh la traffic)
+        run: |
+          python - <<'PYEOF'
+          import asyncio
+          from playwright.async_api import async_playwright
+
+          URL = "https://qc-daidung.streamlit.app/"
+
+          async def main():
+              async with async_playwright() as pw:
+                  b = await pw.chromium.launch()
+                  page = await b.new_page()
+                  await page.goto(URL, wait_until="domcontentloaded", timeout=120000)
+                  await page.wait_for_timeout(8000)
+                  # Neu app dang ngu -> tu bam nut danh thuc
+                  try:
+                      btn = page.get_by_text("get this app back up", exact=False)
+                      if await btn.count():
+                          await btn.first.click()
+                          print("App dang ngu -> DA BAM NUT DANH THUC, doi app day...")
+                          await page.wait_for_timeout(90000)
+                  except Exception as e:
+                      print("(khong co nut danh thuc)", repr(e)[:60])
+                  # Giu phien 60s de websocket duoc tinh la nguoi dung that
+                  await page.wait_for_timeout(60000)
+                  title = await page.title()
+                  print("Tieu de trang cuoi cung:", title[:80])
+                  await b.close()
+
+          asyncio.run(main())
+          PYEOF
