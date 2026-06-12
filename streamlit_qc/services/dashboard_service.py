@@ -145,6 +145,14 @@ def compute_dashboard(
     return data
 
 
+def get_last_import(db: DB, pid: int) -> str:
+    """Thời điểm import dữ liệu gần nhất của dự án (audit 'dữ liệu có mới không')."""
+    r = db.conn.execute(
+        "SELECT MAX(imported_at) m FROM inspections WHERE project_id=?", (pid,)
+    ).fetchone()
+    return str(r["m"] or "")
+
+
 # ====================================================================
 # KHỐI LƯỢNG (TẤN) + PHỄU CÁC KHÂU — kiểm soát không bỏ sót
 # ====================================================================

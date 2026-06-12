@@ -253,6 +253,34 @@ st.write("")
 # ============================================================
 # ⚖️ KHỐI LƯỢNG (TẤN) + PHỄU CÁC KHÂU — kiểm soát không bỏ sót
 # ============================================================
+@st.cache_data(ttl=60, show_spinner=False, max_entries=32)
+def _last_import_cached(_db, pid_in: int) -> str:
+    return dashboard_service.get_last_import(_db, pid_in)
+
+def _fmt_ts(ts: str) -> str:
+    s = str(ts or "").replace("T", " ")
+    if len(s) >= 16:
+        d, t = s[:10], s[11:16]
+        try:
+            y, m, dd = d.split("-")
+            return f"{dd}/{m}/{y} {t}"
+        except ValueError:
+            return s
+    return s or "—"
+
+_li = _last_import_cached(db, pid)
+if _li:
+    st.markdown(
+        f'<div style="background:#ECFDF5;border:1px solid #6EE7B7;border-radius:8px;'
+        f'padding:6px 14px;display:inline-block;font-size:13.5px;color:#065F46;">'
+        f'🕐 <b>Dữ liệu import lần cuối:</b> {_fmt_ts(_li)} '
+        f'<span style="color:#64748B;">· import tự động chạy ~1h sáng mỗi đêm</span></div>',
+        unsafe_allow_html=True,
+    )
+else:
+    st.warning("🕐 Dự án này CHƯA có lần import dữ liệu nào — kiểm tra tab Actions trên GitHub.")
+st.write("")
+
 st.markdown('<div class="section-title">⚖️ Khối lượng &amp; phễu các khâu</div>',
             unsafe_allow_html=True)
 
