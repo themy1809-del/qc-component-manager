@@ -129,6 +129,61 @@ def save_state(state: dict) -> None:
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def list_drive_folder(folder_id: str) -> list[tuple]:
+    """Liet ke (ten, id, kind) trong thu muc Drive cong khai (embeddedfolderview).
+
+    Vi sao can: file cache cua team duoc TAO LAI moi dem -> ID doi lien tuc,
+    nen phai do ID moi theo TEN file moi lan chay.
+    """
+    import urllib.request
+    url = f"https://drive.google.com/embeddedfolderview?id={folder_id}"
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        html = resp.read().decode("utf-8", "ignore")
+
+    out = []
+    pat = re.compile(
+        r'href="https://(docs\.google\.com/spreadsheets/d/|drive\.google\.com/file/d/)'
+        r'([-\w]{20,})[^"]*"[\s\S]{0,1200}?flip-entry-title">([^<]+)<'
+    )
+    for host, fid, name in pat.findall(html):
+        kind = "gsheet" if "spreadsheets" in host else "file"
+        out.append((name.strip(), fid, kind))
+    if out:
+        return out
+    # Fallback: bat cap (id, ten) theo thu tu xuat hien
+    ids = re.findall(
+        r'https://(docs\.google\.com/spreadsheets/d/|drive\.google\.com/file/d/)([-\w]{20,})',
+        html)
+    names = re.findall(r'flip-entry-title">([^<]+)<', html)
+    seen, uniq = set(), []
+    for host, fid in ids:
+        if fid not in seen:
+            seen.add(fid)
+            uniq.append(("gsheet" if "spreadsheets" in host else "file", fid))
+    if len(uniq) == len(names):
+        return [(n.strip(), fid, k) for (k, fid), n in zip(uniq, names)]
+    return []
+
+
+def resolve_from_folder(folder_id: str, pattern: str):
+    """Tim file khop pattern (fnmatch, khong phan biet hoa thuong) trong folder.
+    Tra (ten, id, kind) hoac None."""
+    import fnmatch
+    try:
+        entries = list_drive_folder(folder_id)
+    except Exception as e:
+        print(f"     [!] Khong liet ke duoc thu muc Drive ({repr(e)[:60]})")
+        return None
+    pat = str(pattern or "*").lower()
+    hits = [t for t in entries if fnmatch.fnmatch(t[0].lower(), pat)]
+    if not hits:
+        return None
+    if len(hits) > 1:
+        print(f"     [i] {len(hits)} file khop '{pattern}' -> chon: {hits[-1][0][:50]}")
+    return hits[-1]
+
+
 def newest_file(folder: str, pattern: str) -> Path | None:
     files = [Path(p) for p in glob.glob(str(Path(folder) / pattern))]
     files = [f for f in files if f.is_file() and not f.name.startswith("~$")]
@@ -238,9 +293,20 @@ def run() -> int:
         try:
             drive_id = str(p.get("drive_id") or "").strip()
             f = None
+            kind = "gsheet" if (p.get("drive_kind") or "gsheet") == "gsheet" else "file"
+            # === Do ID MOI NHAT tu thu muc Drive (cache tao lai moi dem -> ID doi) ===
+            _folder = str(cfg.get("drive_folder") or "").strip()
+            if _folder and kind == "file":
+                _hit = resolve_from_folder(_folder, p.get("mau_ten_file") or f"*{code}*")
+                if _hit:
+                    _name, _fid, _kind = _hit
+                    if _fid != drive_id:
+                        print(f"  ID Drive moi (file tao lai): {_fid[:14]}... | {_name[:45]}")
+                    drive_id, kind = _fid, _kind
+                elif drive_id:
+                    print("     [i] Khong thay file khop trong thu muc -> dung ID cu")
             if drive_id:
                 # === Tai ban moi nhat tu Google Drive ===
-                kind = "gsheet" if (p.get("drive_kind") or "gsheet") == "gsheet" else "file"
                 # Kiem tra dung luong truoc (HEAD) -> neu khong doi thi BO QUA, khoi tai
                 if not force:
                     hs = head_size(drive_id, kind)

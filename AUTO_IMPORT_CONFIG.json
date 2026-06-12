@@ -2,8 +2,10 @@
  "_huong_dan": [
   "Tu dong tai file moi nhat tu Google Drive roi import. Bam IMPORT_ALL.bat.",
   "Du an gsheet = ID on dinh, luon lay ban moi nhat. Du an 'file' neu doi se can cap nhat drive_id.",
-  "Doi 'bat': false de tam bo qua 1 du an."
+  "Doi 'bat': false de tam bo qua 1 du an.",
+  "drive_folder = ID thu muc Drive chua file cache. Du an dang 'file' se duoc DO ID MOI theo ten moi lan chay (vi cache duoc tao lai moi dem)."
  ],
+ "drive_folder": "1cQQ6JhwttWwSVvNykFcow0rKhtGmPE_b",
  "du_an": [
   {
    "code": "10625-031",
@@ -98,7 +100,7 @@
    "drive_kind": "file",
    "drive_name": "xlsx",
    "thu_muc": "master_files",
-   "mau_ten_file": "*10725-003*",
+   "mau_ten_file": "*10725-003*Unit 2*",
    "template": "bison",
    "sheet": "CHECK_LIST",
    "header_row": 2,
