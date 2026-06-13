@@ -1,8 +1,20 @@
-name: Auto import master (hang dem)
+name: Auto import master (theo lich)
+
+# Tu dong tai PKL moi nhat tu Google Drive roi import vao DB Supabase.
+# Khong can double-click IMPORT_ALL.bat tren may nua.
+#
+# YEU CAU 1 LAN DUY NHAT (neu chua lam): GitHub repo -> Settings ->
+#   Secrets and variables -> Actions -> New repository secret:
+#       Name : DATABASE_URL
+#       Value: noi dung file supabase_new.txt (postgresql://... Session pooler)
 
 on:
   schedule:
-    - cron: "0 18 * * *"   # 18:00 UTC = 01:00 sang gio Viet Nam
+    # Gio UTC. Viet Nam = UTC+7. Chay Thu 2 - Thu 7 (1-6), 3 moc trong ngay
+    # de du lieu luon moi theo nhip team cap nhat sheet.
+    - cron: "30 23 * * 0-5"   # 06:30 VN dau ngay (Chu nhat-Thu 6 UTC = T2-T7 VN)
+    - cron: "0 4 * * 1-6"     # 11:00 VN giua trua
+    - cron: "0 10 * * 1-6"    # 17:00 VN cuoi ngay
   workflow_dispatch:
     inputs:
       projects:
@@ -44,6 +56,11 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Chua cau hinh secret DATABASE_URL. Vao Settings -> Secrets and variables -> Actions -> New repository secret (Name: DATABASE_URL)."
+            exit 1
+          fi
           ARGS="${{ inputs.projects }}"
           if [ "${{ inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
+          echo "Chay: python auto_import_master.py $ARGS"
           python -u auto_import_master.py $ARGS

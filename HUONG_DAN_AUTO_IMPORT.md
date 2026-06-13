@@ -35,10 +35,51 @@ File `AUTO_IMPORT_CONFIG.json` đã khai báo sẵn, lấy từ thư mục Drive
 
 4. Tạm bỏ qua 1 dự án: mở config, đổi `"bat": false`.
 
-## Tự chạy theo lịch (tuỳ chọn)
+## Tự chạy tự động trên CLOUD (không cần bật máy)
 
-Muốn máy tự chạy mỗi sáng: dùng **Task Scheduler** của Windows, trỏ tới
-`IMPORT_ALL.bat`, đặt giờ (vd 7:00). Khi cần tôi hướng dẫn dựng lịch.
+App đã có sẵn **GitHub Actions** chạy auto-import tự động, **không cần máy anh bật**.
+File: `.github/workflows/auto-import.yml`.
+
+**Lịch chạy** (giờ Việt Nam, Thứ 2 – Thứ 7):
+- **06:30** đầu ngày làm việc
+- **11:00** giữa trưa
+- **17:00** cuối ngày
+
+Mỗi lần chạy: tự dò file mới nhất trên Drive → file nào không đổi thì bỏ qua →
+file đổi thì tải + import vào Supabase. Dữ liệu trên `qc-daidung.streamlit.app`
+tự cập nhật theo, không phải double-click `IMPORT_ALL.bat` nữa.
+
+### Cần làm 1 lần duy nhất: thêm "khóa" DATABASE_URL trên GitHub
+
+Để Actions kết nối được DB Supabase, phải lưu chuỗi kết nối vào GitHub (an toàn, ẩn):
+
+1. Mở repo trên GitHub → **Settings** (tab trên cùng).
+2. Menu trái: **Secrets and variables → Actions**.
+3. Bấm **New repository secret**.
+4. **Name**: `DATABASE_URL`
+5. **Secret**: dán **nguyên nội dung file `supabase_new.txt`** (chuỗi `postgresql://...` — bản Session pooler).
+6. Bấm **Add secret**.
+
+> Nếu chưa thêm secret này, các lần chạy theo lịch sẽ **báo lỗi đỏ** với dòng
+> "Chua cau hinh secret DATABASE_URL".
+
+### Chạy tay / kiểm tra ngay (không đợi tới giờ)
+
+1. Repo GitHub → tab **Actions** → chọn workflow **"Auto import master (theo lich)"**.
+2. Bấm **Run workflow** (góc phải).
+   - Ô **projects**: gõ mã dự án muốn import (vd `10725-009`), để trống = tất cả.
+   - Tick **force** nếu muốn ép import lại cả file không đổi.
+3. Bấm nút **Run workflow** xanh → đợi → bấm vào lần chạy để xem log từng dự án.
+   Log cuối in: `XONG: N OK, N bỏ qua, N lỗi`.
+
+### Đổi lịch chạy
+
+Mở `.github/workflows/auto-import.yml`, sửa các dòng `cron` (giờ **UTC**, VN = UTC+7).
+Vd muốn thêm mốc 09:00 VN → thêm dòng `- cron: "0 2 * * 1-6"`.
+
+## Tự chạy trên MÁY theo lịch (tuỳ chọn, nếu không muốn dùng cloud)
+
+Dùng **Task Scheduler** của Windows, trỏ tới `IMPORT_ALL.bat`, đặt giờ (vd 7:00).
 
 ---
 
