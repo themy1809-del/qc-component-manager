@@ -40,10 +40,7 @@ File `AUTO_IMPORT_CONFIG.json` đã khai báo sẵn, lấy từ thư mục Drive
 App đã có sẵn **GitHub Actions** chạy auto-import tự động, **không cần máy anh bật**.
 File: `.github/workflows/auto-import.yml`.
 
-**Lịch chạy** (giờ Việt Nam, Thứ 2 – Thứ 7):
-- **06:30** đầu ngày làm việc
-- **11:00** giữa trưa
-- **17:00** cuối ngày
+**Lịch chạy** (giờ Việt Nam, Thứ 2 – Thứ 7): **08:00, 11:00, 13:00, 15:00**.
 
 Mỗi lần chạy: tự dò file mới nhất trên Drive → file nào không đổi thì bỏ qua →
 file đổi thì tải + import vào Supabase. Dữ liệu trên `qc-daidung.streamlit.app`

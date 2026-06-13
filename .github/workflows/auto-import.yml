@@ -10,11 +10,11 @@ name: Auto import master (theo lich)
 
 on:
   schedule:
-    # Gio UTC. Viet Nam = UTC+7. Chay Thu 2 - Thu 7 (1-6), 3 moc trong ngay
-    # de du lieu luon moi theo nhip team cap nhat sheet.
-    - cron: "30 23 * * 0-5"   # 06:30 VN dau ngay (Chu nhat-Thu 6 UTC = T2-T7 VN)
-    - cron: "0 4 * * 1-6"     # 11:00 VN giua trua
-    - cron: "0 10 * * 1-6"    # 17:00 VN cuoi ngay
+    # Gio UTC. Viet Nam = UTC+7. Chay Thu 2 - Thu 7 (1-6), 4 moc trong gio lam viec.
+    - cron: "0 1 * * 1-6"   # 08:00 VN
+    - cron: "0 4 * * 1-6"   # 11:00 VN
+    - cron: "0 6 * * 1-6"   # 13:00 VN
+    - cron: "0 8 * * 1-6"   # 15:00 VN
   workflow_dispatch:
     inputs:
       projects:
