@@ -80,21 +80,46 @@ def _drive_url(drive_id: str, kind: str) -> str:
             f"?id={drive_id}&export=download&confirm=t")
 
 
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _api_key() -> str:
+    """API key Google Drive (de may chu cloud doc duoc Google Sheets).
+
+    Lay tu bien moi truong GOOGLE_API_KEY (GitHub secret) hoac file
+    google_api_key.txt ben canh script (khi chay tren may). De trong = bo qua.
+    """
+    k = os.getenv("GOOGLE_API_KEY", "").strip()
+    if k:
+        return k
+    p = ROOT / "google_api_key.txt"
+    if p.exists():
+        return p.read_text(encoding="utf-8").strip()
+    return ""
+
+
 def _drive_url_candidates(drive_id: str, kind: str) -> list[str]:
     """Danh sach URL tai theo thu tu uu tien.
 
     Vi sao can nhieu kieu: tu may chu cloud (GitHub Actions), link kieu
-    'Google Sheets export' co the bi 410 Gone (dac biet khi file thuc ra la
-    .xlsx upload chu khong phai Google Sheet that). Nen thu lan luot:
-    Sheets export -> tai file truc tiep (usercontent) -> uc kieu cu.
+    'Google Sheets export' co the bi 410/404 (dac biet voi Google Sheet that).
+    Neu co API key -> uu tien Drive API (doc duoc ca Sheet that tu cloud).
+    Thu lan luot: API -> Sheets export -> tai file truc tiep -> uc kieu cu.
     """
     sheet_exp = f"https://docs.google.com/spreadsheets/d/{drive_id}/export?format=xlsx"
     uc_user = (f"https://drive.usercontent.google.com/download"
                f"?id={drive_id}&export=download&confirm=t")
     uc_old = f"https://drive.google.com/uc?id={drive_id}&export=download&confirm=t"
-    if kind == "gsheet":
-        return [sheet_exp, uc_user, uc_old]
-    return [uc_user, uc_old, sheet_exp]
+    urls = [sheet_exp, uc_user, uc_old] if kind == "gsheet" else [uc_user, uc_old, sheet_exp]
+    key = _api_key()
+    if key:
+        api_export = (f"https://www.googleapis.com/drive/v3/files/{drive_id}/export"
+                      f"?mimeType={XLSX_MIME}&key={key}&supportsAllDrives=true")
+        api_media = (f"https://www.googleapis.com/drive/v3/files/{drive_id}"
+                     f"?alt=media&key={key}&supportsAllDrives=true")
+        urls = ([api_export, api_media] + urls if kind == "gsheet"
+                else [api_media, api_export] + urls)
+    return urls
 
 
 def _looks_like_html(data: bytes) -> bool:
@@ -149,8 +174,9 @@ def download_from_drive(drive_id: str, kind: str, dest: Path) -> Path:
                 req2 = urllib.request.Request(url2, headers={"User-Agent": "Mozilla/5.0"})
                 with urllib.request.urlopen(req2, timeout=600) as resp2:
                     data = resp2.read()
-            # Du lieu hop le: khong phai HTML va du lon
-            if _looks_like_html(data) or len(data) < 1024:
+            # Du lieu hop le: khong phai HTML/JSON loi va du lon
+            if (_looks_like_html(data) or len(data) < 1024
+                    or (data[:1] == b"{" and b'"error"' in data[:800])):
                 last_err = f"endpoint tra ve khong phai file ({len(data)} bytes)"
                 continue
             dest.write_bytes(data)
@@ -393,33 +419,38 @@ def run() -> int:
 
             # --- sheet + header row ---
             tpl_sheet, tpl_hr = default_sheet_header(p.get("template"))
-            sheet = p.get("sheet") or None
-            if sheet is not None and not str(sheet).strip():
-                sheet = None
-            if sheet is None:
-                sheets = list_sheet_names(f)
-                if tpl_sheet and tpl_sheet in sheets:
-                    sheet = tpl_sheet
-                else:
-                    # Uu tien sheet du lieu, tranh SPM/SUM/NDT...
-                    PRIO = ("pkl", "check_list", "checklist", "check list")
-                    SKIP = ("spm", "sum", "ndt", "input", "ktra", "kiểm tra",
-                            "kiem tra", "wps", "bbgn", "pivot", "link", "load",
-                            "update", "dwg", "aws", "nfi", "master schedule")
-                    low = [(s, s.strip().lower()) for s in sheets]
-                    sheet = next((s for s, l in low for k in PRIO if l == k or l.startswith(k)), None)
-                    if sheet is None:
-                        sheet = next((s for s, l in low if not any(k in l for k in SKIP)), sheets[0])
-            # Doi chieu ten sheet voi danh sach that (chiu sai dau cach/hoa thuong)
-            try:
-                _avail = list_sheet_names(f)
-                if sheet not in _avail:
-                    _norm = {str(x).strip().lower(): x for x in _avail}
-                    _hit = _norm.get(str(sheet).strip().lower())
-                    if _hit:
-                        sheet = _hit
-            except Exception:
-                pass
+            sheets = list_sheet_names(f)
+
+            def _match_sheet(name):
+                """Tim ten sheet that khop 'name' (chiu sai dau cach/hoa thuong)."""
+                if not name:
+                    return None
+                if name in sheets:
+                    return name
+                norm = {str(x).strip().lower(): x for x in sheets}
+                return norm.get(str(name).strip().lower())
+
+            def _auto_pick_sheet():
+                # Uu tien sheet du lieu, tranh SPM/SUM/NDT...
+                PRIO = ("pkl", "check_list", "checklist", "check list")
+                SKIP = ("spm", "sum", "ndt", "input", "ktra", "kiểm tra",
+                        "kiem tra", "wps", "bbgn", "pivot", "link", "load",
+                        "update", "dwg", "aws", "nfi", "master schedule")
+                low = [(s, s.strip().lower()) for s in sheets]
+                s = next((s for s, l in low for k in PRIO if l == k or l.startswith(k)), None)
+                if s is None:
+                    s = next((s for s, l in low if not any(k in l for k in SKIP)), sheets[0])
+                return s
+
+            want_sheet = p.get("sheet")
+            if want_sheet is not None and not str(want_sheet).strip():
+                want_sheet = None
+            # Uu tien: sheet khai trong config -> sheet template -> tu chon.
+            # Neu sheet khai khong co trong file thi TU CHON thay vi bao loi.
+            sheet = _match_sheet(want_sheet) or _match_sheet(tpl_sheet) or _auto_pick_sheet()
+            if want_sheet and _match_sheet(want_sheet) is None:
+                print(f"     [i] Sheet '{want_sheet}' khong co trong file "
+                      f"-> tu chon sheet: {sheet}")
 
             hr = p.get("header_row")
             if hr is None or hr == "":
@@ -482,7 +513,3 @@ def run() -> int:
 if __name__ == "__main__":
     _rc = run()
     sys.exit(_rc)
-# ============================================================
-# ============================================================
-# ============================================================
-# ============================================================

@@ -71,3 +71,4 @@ _drive_cache/
 # Rac tam (mount/sandbox)
 .fuse_hidden*
 US
+google_api_key.txt

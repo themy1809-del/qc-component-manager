@@ -106,3 +106,20 @@ Mở PowerShell tại thư mục web app, gõ tên 1 hoặc vài mã dự án:
   tạm tắt, khi cần mới bật lại.
 - Vì DB đặt ở Mỹ, mỗi lần import dự án lớn (vài chục nghìn cấu kiện) sẽ mất ít phút
   do khoảng cách mạng — đây là giới hạn của bản miễn phí, không phải lỗi.
+
+## Dự án Google Sheets trên cloud — cần Google API key
+
+5 dự án dạng Google Sheets (team sửa online) **không tải được từ máy chủ GitHub**
+nếu không có API key. Làm 1 lần:
+
+1. Vào https://console.cloud.google.com → tạo 1 Project (hoặc dùng project sẵn).
+2. Menu → **APIs & Services → Library** → tìm **Google Drive API** → **Enable**.
+3. Menu → **APIs & Services → Credentials** → **Create credentials → API key** → copy chuỗi key.
+4. Trên GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**:
+   - Name: `GOOGLE_API_KEY`
+   - Secret: dán chuỗi key vừa tạo.
+5. **Chia sẻ 5 Google Sheets**: mở từng sheet → Share → "Anyone with the link" → **Viewer**.
+   (API key chỉ đọc được file đã chia sẻ công khai dạng xem.)
+
+Sau đó workflow sẽ tự đọc cả 5 Google Sheets → đủ 18/18. Không có key thì 13 dự án
+dạng file vẫn tự động bình thường, chỉ 5 Sheets là bỏ qua.
