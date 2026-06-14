@@ -73,47 +73,95 @@ DOWNLOAD_DIR = ROOT / "_drive_cache"
 
 
 def _drive_url(drive_id: str, kind: str) -> str:
+    """URL chinh (dung cho HEAD check)."""
     if kind == "gsheet":
         return f"https://docs.google.com/spreadsheets/d/{drive_id}/export?format=xlsx"
-    # Endpoint moi xu ly file lon (>25MB) khong vuong trang canh bao virus.
     return (f"https://drive.usercontent.google.com/download"
             f"?id={drive_id}&export=download&confirm=t")
 
 
+def _drive_url_candidates(drive_id: str, kind: str) -> list[str]:
+    """Danh sach URL tai theo thu tu uu tien.
+
+    Vi sao can nhieu kieu: tu may chu cloud (GitHub Actions), link kieu
+    'Google Sheets export' co the bi 410 Gone (dac biet khi file thuc ra la
+    .xlsx upload chu khong phai Google Sheet that). Nen thu lan luot:
+    Sheets export -> tai file truc tiep (usercontent) -> uc kieu cu.
+    """
+    sheet_exp = f"https://docs.google.com/spreadsheets/d/{drive_id}/export?format=xlsx"
+    uc_user = (f"https://drive.usercontent.google.com/download"
+               f"?id={drive_id}&export=download&confirm=t")
+    uc_old = f"https://drive.google.com/uc?id={drive_id}&export=download&confirm=t"
+    if kind == "gsheet":
+        return [sheet_exp, uc_user, uc_old]
+    return [uc_user, uc_old, sheet_exp]
+
+
+def _looks_like_html(data: bytes) -> bool:
+    head = data[:300].lstrip().lower()
+    return head.startswith(b"<!doctype html") or b"<html" in head
+
+
 def head_size(drive_id: str, kind: str):
     """Lay dung luong file (Content-Length) bang HEAD, KHONG tai noi dung.
-    Tra int hoac None neu khong lay duoc."""
+    Thu lan luot cac endpoint. Tra int hoac None neu khong lay duoc."""
     import urllib.request
-    try:
-        req = urllib.request.Request(_drive_url(drive_id, kind),
-                                     headers={"User-Agent": "Mozilla/5.0"}, method="HEAD")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            cl = resp.headers.get("Content-Length")
-            return int(cl) if cl and cl.isdigit() else None
-    except Exception:
-        return None
+    for url in _drive_url_candidates(drive_id, kind):
+        try:
+            req = urllib.request.Request(
+                url, headers={"User-Agent": "Mozilla/5.0"}, method="HEAD")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                cl = resp.headers.get("Content-Length")
+                if cl and cl.isdigit():
+                    return int(cl)
+        except Exception:
+            continue
+    return None
 
 
 def download_from_drive(drive_id: str, kind: str, dest: Path) -> Path:
-    """Tai 1 file tu Google Drive (link cong khai 'ai co link cung xem')."""
+    """Tai 1 file tu Google Drive (link cong khai 'ai co link cung xem').
+
+    Thu lan luot nhieu endpoint; cai nao tra ve du lieu nhi phan that (khong
+    phai trang HTML, khong loi 4xx) thi dung. Tu xu ly trang xac nhan virus
+    cho file lon. Nho vay link Sheets bi 410 tren cloud van tai duoc qua
+    duong tai file truc tiep.
+    """
+    import urllib.error
     import urllib.request
 
     dest.parent.mkdir(exist_ok=True, parents=True)
-    url = _drive_url(drive_id, kind)
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=180) as resp:
-        data = resp.read()
-    # Phong khi van dinh trang HTML xac nhan (file rat lon) -> bat token & tai lai
-    if data[:200].lstrip().lower().startswith(b"<!doctype html") or b"<html" in data[:200].lower():
-        m = re.search(rb'name="confirm"\s+value="([^"]+)"', data) or re.search(rb'confirm=([0-9A-Za-z_-]+)', data)
-        tok = m.group(1).decode() if m else "t"
-        url2 = (f"https://drive.usercontent.google.com/download"
-                f"?id={drive_id}&export=download&confirm={tok}")
-        req2 = urllib.request.Request(url2, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req2, timeout=300) as resp2:
-            data = resp2.read()
-    dest.write_bytes(data)
-    return dest
+    last_err = None
+    for url in _drive_url_candidates(drive_id, kind):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                data = resp.read()
+            # Trang xac nhan HTML (file lon) -> bat token confirm roi tai lai
+            if _looks_like_html(data):
+                m = (re.search(rb'name="confirm"\s+value="([^"]+)"', data)
+                     or re.search(rb'confirm=([0-9A-Za-z_-]+)', data))
+                tok = m.group(1).decode() if m else "t"
+                mu = re.search(rb'name="uuid"\s+value="([^"]+)"', data)
+                uuid = ("&uuid=" + mu.group(1).decode()) if mu else ""
+                url2 = (f"https://drive.usercontent.google.com/download"
+                        f"?id={drive_id}&export=download&confirm={tok}{uuid}")
+                req2 = urllib.request.Request(url2, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req2, timeout=600) as resp2:
+                    data = resp2.read()
+            # Du lieu hop le: khong phai HTML va du lon
+            if _looks_like_html(data) or len(data) < 1024:
+                last_err = f"endpoint tra ve khong phai file ({len(data)} bytes)"
+                continue
+            dest.write_bytes(data)
+            return dest
+        except urllib.error.HTTPError as e:
+            last_err = f"HTTP {e.code}"
+            continue
+        except Exception as e:
+            last_err = repr(e)[:80]
+            continue
+    raise RuntimeError(f"Tat ca endpoint tai deu that bai (loi cuoi: {last_err})")
 
 
 def load_state() -> dict:
